@@ -87,7 +87,9 @@ export default function WorkoutLogPage() {
     })
   }, [hydrated, saved, today, workout.dayName, startedAt, step, exerciseOrder, entries, completedCardio])
 
-  const elapsedMinutes = Math.max(1, Math.round((Date.now() - startedAt) / 60000))
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [step])
 
   const currentExerciseIndex =
     step > 0 && step <= totalExercises ? exerciseOrder[step - 1] : null
@@ -221,9 +223,7 @@ export default function WorkoutLogPage() {
 
   return (
     <div className="space-y-6 pb-6">
-      <div className="sticky top-0 z-20 -mx-4 border-b border-slate-800 bg-slate-950/95 px-4 pb-4 pt-2 backdrop-blur">
-        <div className="label">Workout</div>
-
+      <div className="sticky top-0 z-20 -mx-4 border-b border-slate-800 bg-slate-950/95 px-4 pb-3 pt-2 backdrop-blur">
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-300">
           {progressItems.map((item, index) => {
             const active = index === step
@@ -241,34 +241,29 @@ export default function WorkoutLogPage() {
         </div>
 
         {step === 0 ? (
-          <div className="mt-4">
-            <h1 className="text-2xl font-semibold text-white">Warmup</h1>
-            <p className="mt-1 text-slate-300">{workout.warmup}</p>
+          <div className="mt-3 space-y-1">
+            <div className="text-lg font-semibold text-white">Warmup</div>
+            <div className="text-sm text-slate-400">Next: {nextExerciseName}</div>
           </div>
         ) : step > 0 && step <= totalExercises ? (
-          <div className="mt-4 space-y-2">
-            <div className="label">
-              Exercise {step} of {totalExercises}
-            </div>
+          <div className="mt-3 space-y-1">
+<div className="flex items-center gap-3">
+  <div className="text-lg font-semibold text-white">
+    {currentExerciseName}
+  </div>
 
-            <h1 className="text-2xl font-semibold text-white">{currentExerciseName}</h1>
-
-            <p className="text-slate-300">
-              Target: {getTargetForExercise(currentExerciseName).sets} × {getTargetForExercise(currentExerciseName).reps}
-            </p>
-
-            <p className="text-sm text-slate-400">
-              Next: {nextExerciseName}
-            </p>
+  <div className="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
+    {getTargetForExercise(currentExerciseName).sets} × {getTargetForExercise(currentExerciseName).reps}
+  </div>
+</div>
+            <div className="text-sm text-slate-400">Next: {nextExerciseName}</div>
           </div>
         ) : (
-          <div className="mt-4">
-            <h1 className="text-2xl font-semibold text-white">Cardio</h1>
-            <p className="mt-1 text-slate-300">{workout.cardio}</p>
+          <div className="mt-3 space-y-1">
+            <div className="text-lg font-semibold text-white">Cardio</div>
+            <div className="text-sm text-slate-400">Finish workout when done</div>
           </div>
         )}
-
-        <p className="mt-3 text-sm text-slate-400">Elapsed: {elapsedMinutes} min</p>
       </div>
 
       {step === 0 && (
