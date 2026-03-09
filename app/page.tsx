@@ -88,6 +88,107 @@ function getTodayPlan() {
   }
 }
 
+function parseLocalDate(dateString: string) {
+  const [year, month, day] = dateString.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function buildCoachInsight(params: {
+  latestMetric: BodyMetricRow | null
+  oldestMetric: BodyMetricRow | null
+  lastMeaningfulWorkout: CompletedSessionRow | null
+  streakCount: number
+}) {
+  const { latestMetric, oldestMetric, lastMeaningfulWorkout, streakCount } = params
+
+  const weightDelta =
+    latestMetric?.weight != null && oldestMetric?.weight != null
+      ? Number((latestMetric.weight - oldestMetric.weight).toFixed(1))
+      : null
+
+  const bodyFatDelta =
+    latestMetric?.body_fat != null && oldestMetric?.body_fat != null
+      ? Number((latestMetric.body_fat - oldestMetric.body_fat).toFixed(1))
+      : null
+
+  if (weightDelta != null && weightDelta < 0 && streakCount >= 2) {
+    return {
+      title: 'Coach Insight',
+      body: `Weight is down ${Math.abs(weightDelta)} lbs since you started. Keep stacking workouts—momentum is building.`,
+    }
+  }
+
+  if (bodyFatDelta != null && bodyFatDelta < 0) {
+    return {
+      title: 'Coach Insight',
+      body: `Body fat is down ${Math.abs(bodyFatDelta)}% from your baseline. Stay steady this week.`,
+    }
+  }
+
+  if (streakCount >= 3) {
+    return {
+      title: 'Coach Insight',
+      body: `You’re on a ${streakCount}-workout streak. Consistency like this is what drives real progress.`,
+    }
+  }
+
+  if (lastMeaningfulWorkout) {
+    return {
+      title: 'Coach Insight',
+      body: `Your last completed workout was on ${lastMeaningfulWorkout.date}. Keep up the consistency—you’re getting closer to your goal.`,
+    }
+  }
+
+  return {
+    title: 'Coach Insight',
+    body: `You’ve got the system in place. Stay consistent and let the numbers start working in your favor.`,
+  }
+}
+
+function getCurrentWeekdays() {
+  const today = new Date()
+  const currentDay = today.getDay()
+  const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay
+  const monday = new Date(today)
+  monday.setDate(today.getDate() + mondayOffset)
+  monday.setHours(0, 0, 0, 0)
+
+  const labels = ['M', 'T', 'W', 'T', 'F']
+
+  return labels.map((label, index) => {
+    const date = new Date(monday)
+    date.setDate(monday.getDate() + index)
+    return {
+      label,
+      date: getLocalDateString(date),
+    }
+  })
+}
+
+function getWorkoutStreak(sessionDates: string[]) {
+  if (!sessionDates.length) return 0
+
+  const uniqueSorted = [...new Set(sessionDates)]
+    .map((date) => parseLocalDate(date))
+    .sort((a, b) => b.getTime() - a.getTime())
+
+  let streak = 1
+
+  for (let i = 1; i < uniqueSorted.length; i += 1) {
+    const prev = uniqueSorted[i - 1]
+    const curr = uniqueSorted[i]
+    const diffDays = Math.round((prev.getTime() - curr.getTime()) / 86400000)
+
+    if (diffDays === 1 || (prev.getDay() === 1 && curr.getDay() === 5 && diffDays === 3)) {
+      streak += 1
+    } else {
+      break
+    }
+  }
+
+  return streak
+}
+
 export default function HomePage() {
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([])
   const [todayCheckIn, setTodayCheckIn] = useState<BodyMetricRow | null>(null)
@@ -123,6 +224,10 @@ export default function HomePage() {
     return metrics.length ? metrics[metrics.length - 1] : null
   }, [metrics])
 
+  const oldestMetric = useMemo(() => {
+    return metrics.length ? metrics[0] : null
+  }, [metrics])
+
   const latestWaist = useMemo(() => {
     const reversed = [...metrics].reverse()
     const row = reversed.find((m) => m.waist != null)
@@ -137,6 +242,10 @@ export default function HomePage() {
     return sessions.filter((session) => (session.duration_minutes ?? 0) >= 5)
   }, [sessions])
 
+  const meaningfulSessionDates = useMemo(() => {
+    return meaningfulSessions.map((session) => session.date)
+  }, [meaningfulSessions])
+
   const todayCompletedSession = useMemo(() => {
     return meaningfulSessions.find((session) => session.date === todayDate) ?? null
   }, [meaningfulSessions, todayDate])
@@ -146,6 +255,29 @@ export default function HomePage() {
   }, [meaningfulSessions])
 
   const nextWorkoutLabel = getTomorrowWorkoutLabel()
+
+  const weekProgress = useMemo(() => {
+    const weekdays = getCurrentWeekdays()
+    const completedSet = new Set(meaningfulSessionDates)
+
+    return weekdays.map((day) => ({
+      ...day,
+      completed: completedSet.has(day.date),
+    }))
+  }, [meaningfulSessionDates])
+
+  const streakCount = useMemo(() => {
+    return getWorkoutStreak(meaningfulSessionDates)
+  }, [meaningfulSessionDates])
+
+  const coachInsight = useMemo(() => {
+    return buildCoachInsight({
+      latestMetric,
+      oldestMetric,
+      lastMeaningfulWorkout,
+      streakCount,
+    })
+  }, [latestMetric, oldestMetric, lastMeaningfulWorkout, streakCount])
 
   return (
     <div className="space-y-6 pb-6">
@@ -160,6 +292,43 @@ export default function HomePage() {
           Today&apos;s plan is already adjusted. No decisions needed.
         </p>
       </div>
+
+      <section className="card space-y-4">
+  <div className="label">Momentum</div>
+
+  <div>
+    <div className="label">Week Progress</div>
+    <div className="mt-3 flex items-center justify-between gap-2">
+      {weekProgress.map((day, index) => (
+        <div key={`${day.date}-${index}`} className="flex flex-col items-center gap-2">
+          <div
+            className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${
+              day.completed
+                ? 'bg-emerald-500 text-slate-950'
+                : 'bg-slate-800 text-slate-300'
+            }`}
+          >
+            {day.completed ? '✓' : day.label}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div className="pt-4">
+    <div className="label">Streak</div>
+    <div className="mt-2 text-[1.3rem] font-semibold text-white">
+      {loading ? '...' : `${streakCount} workout${streakCount === 1 ? '' : 's'} in a row`}
+    </div>
+  </div>
+</section>
+
+      <section className="card space-y-4">
+        <div className="label">{coachInsight.title}</div>
+        <p className="text-[1rem] leading-8 text-slate-100">
+          {loading ? 'Loading insight…' : coachInsight.body}
+        </p>
+      </section>
 
       <section className="grid grid-cols-3 gap-3">
         <MetricCard
