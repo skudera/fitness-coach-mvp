@@ -8,6 +8,11 @@ export type WorkoutDefinition = {
   restDay: boolean
 }
 
+export type ExerciseTarget = {
+  sets: number
+  reps: string
+}
+
 export function getWorkoutForToday(): WorkoutDefinition {
   const day = new Date().getDay()
 
@@ -134,4 +139,42 @@ export function getWorkoutForToday(): WorkoutDefinition {
         restDay: false,
       }
   }
+}
+
+export function getTargetForExercise(exerciseName: string): ExerciseTarget {
+  const name = exerciseName.toLowerCase()
+
+  if (
+    name.includes('press') ||
+    name.includes('pulldown') ||
+    name.includes('row') ||
+    name.includes('leg press') ||
+    name.includes('hack squat')
+  ) {
+    return { sets: 3, reps: '8–12' }
+  }
+
+  if (
+    name.includes('lateral raise') ||
+    name.includes('rear delt') ||
+    name.includes('fly') ||
+    name.includes('curl') ||
+    name.includes('extension') ||
+    name.includes('calf') ||
+    name.includes('adductor') ||
+    name.includes('abductor')
+  ) {
+    return { sets: 3, reps: '10–15' }
+  }
+
+  if (
+    name.includes('ab') ||
+    name.includes('crunch') ||
+    name.includes('mobility') ||
+    name.includes('stretch')
+  ) {
+    return { sets: 3, reps: '12–15' }
+  }
+
+  return { sets: 3, reps: '8–12' }
 }

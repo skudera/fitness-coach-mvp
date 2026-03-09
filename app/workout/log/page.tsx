@@ -1,23 +1,17 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { getWorkoutForToday } from '@/lib/workout-data'
-import { saveWorkoutAndLogsToSupabase } from '@/lib/storage-supabase'
+import { getWorkoutForToday, getTargetForExercise } from '@/lib/workout-data'
+import { saveWorkoutAndLogsToSupabase, getLocalDateString } from '@/lib/storage-supabase'
+import {
+  clearWorkoutProgress,
+  loadWorkoutProgress,
+  saveWorkoutProgress,
+  type ExerciseEntryState,
+} from '@/lib/workout-log-state'
 
-type SetRow = {
-  weight: string
-  reps: string
-}
-
-type ExerciseEntry = {
-  sets: SetRow[]
-  difficulty: string
-  discomfort: string
-  notes: string
-}
-
-function createEmptyExercise(): ExerciseEntry {
+function createEmptyExercise(): ExerciseEntryState {
   return {
     sets: [
       { weight: '', reps: '' },
@@ -30,28 +24,92 @@ function createEmptyExercise(): ExerciseEntry {
   }
 }
 
+const difficultyOptions = ['Easy', 'Moderate', 'Hard']
+const discomfortOptions = ['None', 'Shoulder', 'Back', 'Both']
+
 export default function WorkoutLogPage() {
-  const workout = getWorkoutForToday()
-  const [step, setStep] = useState(0) // 0 = warmup, 1..n exercises, n+1 = cardio
-  const [startedAt] = useState(Date.now())
+  const workout = useMemo(() => getWorkoutForToday(), [])
+  const today = useMemo(() => getLocalDateString(), [])
+
+  const [step, setStep] = useState(0) // 0 = warmup, 1..n = exercises, n+1 = cardio
+  const [startedAt, setStartedAt] = useState(Date.now())
+  const [exerciseOrder, setExerciseOrder] = useState<number[]>([])
+  const [entries, setEntries] = useState<ExerciseEntryState[]>([])
   const [completedCardio, setCompletedCardio] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [hydrated, setHydrated] = useState(false)
 
-  const [entries, setEntries] = useState<ExerciseEntry[]>(
-    workout.exercises.map(() => createEmptyExercise())
-  )
+  const totalExercises = workout.exercises.length
+  const cardioStep = totalExercises + 1
 
-  const totalExerciseSteps = workout.exercises.length
-  const cardioStep = totalExerciseSteps + 1
-  const currentExerciseIndex = step - 1
+  useEffect(() => {
+    const defaultEntries = workout.exercises.map(() => createEmptyExercise())
+    const defaultOrder = workout.exercises.map((_, index) => index)
 
-  const elapsedMinutes = useMemo(() => {
-    return Math.max(1, Math.round((Date.now() - startedAt) / 60000))
-  }, [startedAt, step])
+    const savedProgress = loadWorkoutProgress(today, workout.dayName)
 
-  function updateSet(exerciseIndex: number, setIndex: number, field: 'weight' | 'reps', value: string) {
+    if (savedProgress) {
+      setStartedAt(savedProgress.startedAt ?? Date.now())
+      setStep(savedProgress.step ?? 0)
+      setExerciseOrder(
+        Array.isArray(savedProgress.exerciseOrder) && savedProgress.exerciseOrder.length
+          ? savedProgress.exerciseOrder
+          : defaultOrder
+      )
+      setEntries(
+        Array.isArray(savedProgress.entries) && savedProgress.entries.length
+          ? savedProgress.entries
+          : defaultEntries
+      )
+      setCompletedCardio(Boolean(savedProgress.completedCardio))
+    } else {
+      setStartedAt(Date.now())
+      setStep(0)
+      setExerciseOrder(defaultOrder)
+      setEntries(defaultEntries)
+      setCompletedCardio(false)
+    }
+
+    setHydrated(true)
+  }, [today, workout.dayName])
+
+  useEffect(() => {
+    if (!hydrated || saved) return
+
+    saveWorkoutProgress(today, workout.dayName, {
+      startedAt,
+      step,
+      exerciseOrder,
+      entries,
+      completedCardio,
+    })
+  }, [hydrated, saved, today, workout.dayName, startedAt, step, exerciseOrder, entries, completedCardio])
+
+  const elapsedMinutes = Math.max(1, Math.round((Date.now() - startedAt) / 60000))
+
+  const currentExerciseIndex =
+    step > 0 && step <= totalExercises ? exerciseOrder[step - 1] : null
+
+  const currentExerciseName =
+    currentExerciseIndex != null ? workout.exercises[currentExerciseIndex] : ''
+
+  const nextExerciseName =
+    step > 0 && step < totalExercises
+      ? workout.exercises[exerciseOrder[step]]
+      : step === totalExercises
+      ? 'Cardio'
+      : totalExercises > 0
+      ? workout.exercises[exerciseOrder[0]]
+      : ''
+
+  function updateSet(
+    exerciseIndex: number,
+    setIndex: number,
+    field: 'weight' | 'reps',
+    value: string
+  ) {
     setEntries((prev) => {
       const copy = [...prev]
       const exercise = { ...copy[exerciseIndex] }
@@ -75,12 +133,24 @@ export default function WorkoutLogPage() {
     })
   }
 
+  function handleSkipForNow() {
+    if (currentExerciseIndex == null) return
+
+    const currentPosition = step - 1
+
+    setExerciseOrder((prev) => {
+      const copy = [...prev]
+      const [skipped] = copy.splice(currentPosition, 1)
+      copy.push(skipped)
+      return copy
+    })
+  }
+
   async function finishWorkout() {
     try {
       setSaving(true)
       setError('')
 
-      const today = new Date().toISOString().slice(0, 10)
       const actualMinutes = Math.max(1, Math.round((Date.now() - startedAt) / 60000))
 
       const exerciseLogs = entries.flatMap((entry, exerciseIndex) =>
@@ -105,10 +175,11 @@ export default function WorkoutLogPage() {
         warmup_text: workout.warmup,
         cardio_text: workout.cardio,
         completed_cardio: completedCardio,
-        exercise_order: workout.exercises,
+        exercise_order: exerciseOrder.map((index) => workout.exercises[index]),
         exercise_logs: exerciseLogs,
       })
 
+      clearWorkoutProgress(today, workout.dayName)
       setSaved(true)
     } catch (err) {
       console.error(err)
@@ -150,17 +221,10 @@ export default function WorkoutLogPage() {
 
   return (
     <div className="space-y-6 pb-6">
-      <div>
+      <div className="sticky top-0 z-20 -mx-4 border-b border-slate-800 bg-slate-950/95 px-4 pb-4 pt-2 backdrop-blur">
         <div className="label">Workout</div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {workout.dayName}: {workout.focus}
-        </h1>
-        <p className="mt-2 text-slate-300">Elapsed: {elapsedMinutes} min</p>
-      </div>
 
-      <section className="card space-y-4">
-        <div className="label">Progress</div>
-        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-300">
           {progressItems.map((item, index) => {
             const active = index === step
             return (
@@ -175,7 +239,37 @@ export default function WorkoutLogPage() {
             )
           })}
         </div>
-      </section>
+
+        {step === 0 ? (
+          <div className="mt-4">
+            <h1 className="text-2xl font-semibold text-white">Warmup</h1>
+            <p className="mt-1 text-slate-300">{workout.warmup}</p>
+          </div>
+        ) : step > 0 && step <= totalExercises ? (
+          <div className="mt-4 space-y-2">
+            <div className="label">
+              Exercise {step} of {totalExercises}
+            </div>
+
+            <h1 className="text-2xl font-semibold text-white">{currentExerciseName}</h1>
+
+            <p className="text-slate-300">
+              Target: {getTargetForExercise(currentExerciseName).sets} × {getTargetForExercise(currentExerciseName).reps}
+            </p>
+
+            <p className="text-sm text-slate-400">
+              Next: {nextExerciseName}
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4">
+            <h1 className="text-2xl font-semibold text-white">Cardio</h1>
+            <p className="mt-1 text-slate-300">{workout.cardio}</p>
+          </div>
+        )}
+
+        <p className="mt-3 text-sm text-slate-400">Elapsed: {elapsedMinutes} min</p>
+      </div>
 
       {step === 0 && (
         <section className="card space-y-4">
@@ -191,18 +285,8 @@ export default function WorkoutLogPage() {
         </section>
       )}
 
-      {step > 0 && step <= totalExerciseSteps && (
+      {step > 0 && step <= totalExercises && currentExerciseIndex != null && (
         <section className="card space-y-4">
-          <div className="label">
-            Exercise {step} of {totalExerciseSteps}
-          </div>
-
-          <h2 className="text-2xl font-semibold text-white">
-            {workout.exercises[currentExerciseIndex]}
-          </h2>
-
-          <p className="text-slate-300">Target: 3 sets</p>
-
           <div className="space-y-4">
             {entries[currentExerciseIndex].sets.map((setRow, setIndex) => (
               <div
@@ -235,7 +319,7 @@ export default function WorkoutLogPage() {
                         updateSet(currentExerciseIndex, setIndex, 'reps', e.target.value)
                       }
                       className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none"
-                      placeholder="e.g. 10"
+                      placeholder={`Target ${getTargetForExercise(currentExerciseName).reps}`}
                     />
                   </div>
                 </div>
@@ -243,37 +327,49 @@ export default function WorkoutLogPage() {
             ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="label mb-2">Difficulty</div>
-              <select
-                value={entries[currentExerciseIndex].difficulty}
-                onChange={(e) =>
-                  updateExerciseField(currentExerciseIndex, 'difficulty', e.target.value)
-                }
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none"
-              >
-                <option value="">Select</option>
-                <option value="Easy">Easy</option>
-                <option value="Moderate">Moderate</option>
-                <option value="Hard">Hard</option>
-              </select>
+          <div>
+            <div className="label mb-2">Difficulty</div>
+            <div className="flex flex-wrap gap-2">
+              {difficultyOptions.map((option) => {
+                const active = entries[currentExerciseIndex].difficulty === option
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => updateExerciseField(currentExerciseIndex, 'difficulty', option)}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                      active
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                )
+              })}
             </div>
+          </div>
 
-            <div>
-              <div className="label mb-2">Discomfort</div>
-              <select
-                value={entries[currentExerciseIndex].discomfort}
-                onChange={(e) =>
-                  updateExerciseField(currentExerciseIndex, 'discomfort', e.target.value)
-                }
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none"
-              >
-                <option value="None">None</option>
-                <option value="Shoulder">Shoulder</option>
-                <option value="Back">Back</option>
-                <option value="Both">Both</option>
-              </select>
+          <div>
+            <div className="label mb-2">Discomfort</div>
+            <div className="flex flex-wrap gap-2">
+              {discomfortOptions.map((option) => {
+                const active = entries[currentExerciseIndex].discomfort === option
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => updateExerciseField(currentExerciseIndex, 'discomfort', option)}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                      active
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
@@ -289,21 +385,28 @@ export default function WorkoutLogPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-3">
             <button
               onClick={() => setStep((prev) => Math.max(0, prev - 1))}
-              className="block w-full rounded-[1.75rem] bg-white px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100"
+              className="block w-full rounded-[1.5rem] bg-white px-4 py-4 text-center text-[0.95rem] font-semibold text-slate-900 transition hover:bg-slate-100"
             >
               Back
             </button>
 
             <button
-              onClick={() =>
-                setStep((prev) => (prev < totalExerciseSteps ? prev + 1 : cardioStep))
-              }
-              className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
+              onClick={handleSkipForNow}
+              className="block w-full rounded-[1.5rem] bg-slate-800 px-4 py-4 text-center text-[0.95rem] font-semibold text-slate-100 transition hover:bg-slate-700"
             >
-              {step === totalExerciseSteps ? 'Go to cardio' : 'Next exercise'}
+              Skip for now
+            </button>
+
+            <button
+              onClick={() =>
+                setStep((prev) => (prev < totalExercises ? prev + 1 : cardioStep))
+              }
+              className="block w-full rounded-[1.5rem] bg-emerald-500 px-4 py-4 text-center text-[0.95rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
+            >
+              {step === totalExercises ? 'Go to cardio' : 'Next'}
             </button>
           </div>
         </section>
@@ -327,7 +430,7 @@ export default function WorkoutLogPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <button
-              onClick={() => setStep(totalExerciseSteps)}
+              onClick={() => setStep(totalExercises)}
               className="block w-full rounded-[1.75rem] bg-white px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100"
             >
               Back
