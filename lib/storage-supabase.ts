@@ -16,6 +16,49 @@ export type BodyMetricRow = {
   created_at?: string
 }
 
+export type CompletedSessionRow = {
+  id?: string
+  user_id?: string
+  workout_id?: string | null
+  date: string
+  duration_minutes?: number | null
+  completed_cardio?: boolean
+  completed_sauna?: boolean
+  created_at?: string
+}
+
+export function getLocalDateString(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export function getTomorrowWorkoutLabel() {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const day = tomorrow.getDay()
+
+  switch (day) {
+    case 0:
+      return 'Sunday: Recovery / Mobility'
+    case 1:
+      return 'Monday: Chest / Shoulders / Cardio'
+    case 2:
+      return 'Tuesday: Back / Core / Cardio'
+    case 3:
+      return 'Wednesday: Legs / Core / Cardio'
+    case 4:
+      return 'Thursday: Upper Mixed / Basketball'
+    case 5:
+      return 'Friday: Lower / Recovery Conditioning'
+    case 6:
+      return 'Saturday: Optional Recovery / Mobility'
+    default:
+      return 'Next workout'
+  }
+}
+
 export async function loadBodyMetricsHistoryFromSupabase(): Promise<BodyMetricRow[]> {
   const { data, error } = await supabase
     .from('body_metrics')
@@ -29,6 +72,26 @@ export async function loadBodyMetricsHistoryFromSupabase(): Promise<BodyMetricRo
   }
 
   return (data ?? []) as BodyMetricRow[]
+}
+
+export async function loadTodayCheckInFromSupabase(date?: string): Promise<BodyMetricRow | null> {
+  const targetDate = date ?? getLocalDateString()
+
+  const { data, error } = await supabase
+    .from('body_metrics')
+    .select('*')
+    .eq('user_id', DEFAULT_USER_ID)
+    .eq('date', targetDate)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Supabase today check-in load error:', error)
+    return null
+  }
+
+  return (data as BodyMetricRow | null) ?? null
 }
 
 export async function saveBodyMetricToSupabase(payload: {
@@ -147,4 +210,20 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
   }
 
   return workout
+}
+
+export async function loadCompletedSessionsFromSupabase(): Promise<CompletedSessionRow[]> {
+  const { data, error } = await supabase
+    .from('completed_sessions')
+    .select('*')
+    .eq('user_id', DEFAULT_USER_ID)
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Supabase completed sessions load error:', error)
+    return []
+  }
+
+  return (data ?? []) as CompletedSessionRow[]
 }

@@ -3,7 +3,14 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { MetricCard } from '@/components/MetricCard'
-import { loadBodyMetricsHistoryFromSupabase } from '@/lib/storage-supabase'
+import {
+  loadBodyMetricsHistoryFromSupabase,
+  loadCompletedSessionsFromSupabase,
+  loadTodayCheckInFromSupabase,
+  getLocalDateString,
+  getTomorrowWorkoutLabel,
+  type CompletedSessionRow,
+} from '@/lib/storage-supabase'
 
 type BodyMetricRow = {
   id?: string
@@ -83,16 +90,27 @@ function getTodayPlan() {
 
 export default function HomePage() {
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([])
+  const [todayCheckIn, setTodayCheckIn] = useState<BodyMetricRow | null>(null)
+  const [sessions, setSessions] = useState<CompletedSessionRow[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       try {
-        const rows = await loadBodyMetricsHistoryFromSupabase()
-        setMetrics(Array.isArray(rows) ? rows : [])
+        const [metricRows, sessionRows, todayRow] = await Promise.all([
+          loadBodyMetricsHistoryFromSupabase(),
+          loadCompletedSessionsFromSupabase(),
+          loadTodayCheckInFromSupabase(),
+        ])
+
+        setMetrics(Array.isArray(metricRows) ? metricRows : [])
+        setSessions(Array.isArray(sessionRows) ? sessionRows : [])
+        setTodayCheckIn(todayRow ?? null)
       } catch (error) {
-        console.error('Home metrics load error', error)
+        console.error('Home load error', error)
         setMetrics([])
+        setSessions([])
+        setTodayCheckIn(null)
       } finally {
         setLoading(false)
       }
@@ -113,6 +131,21 @@ export default function HomePage() {
 
   const greeting = getGreeting()
   const todayPlan = getTodayPlan()
+  const todayDate = getLocalDateString()
+
+  const meaningfulSessions = useMemo(() => {
+    return sessions.filter((session) => (session.duration_minutes ?? 0) >= 5)
+  }, [sessions])
+
+  const todayCompletedSession = useMemo(() => {
+    return meaningfulSessions.find((session) => session.date === todayDate) ?? null
+  }, [meaningfulSessions, todayDate])
+
+  const lastMeaningfulWorkout = useMemo(() => {
+    return meaningfulSessions[0] ?? null
+  }, [meaningfulSessions])
+
+  const nextWorkoutLabel = getTomorrowWorkoutLabel()
 
   return (
     <div className="space-y-6 pb-6">
@@ -213,24 +246,52 @@ export default function HomePage() {
         <div className="card">
           <div className="label">Today</div>
 
-          <div className="mt-3 text-[1.7rem] font-semibold leading-tight text-white">
-            {todayPlan.label}: {todayPlan.focus}
-          </div>
+          {todayCompletedSession ? (
+            <>
+              <div className="mt-3 text-[1.45rem] font-semibold leading-tight text-white">
+                {todayPlan.label}: {todayPlan.focus}
+              </div>
 
-          <div className="mt-4 text-[1rem] text-slate-300">
-            {todayPlan.duration}
-          </div>
+              <div className="mt-3 text-[1rem] font-semibold text-emerald-400">
+                Completed ✅
+              </div>
+
+              <div className="mt-3 text-[0.95rem] text-slate-300">
+                {todayCompletedSession.duration_minutes} min actual
+              </div>
+
+              <div className="mt-3 text-[0.9rem] text-slate-400">
+                Next: {nextWorkoutLabel}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mt-3 text-[1.7rem] font-semibold leading-tight text-white">
+                {todayPlan.label}: {todayPlan.focus}
+              </div>
+
+              <div className="mt-4 text-[1rem] text-slate-300">
+                {todayPlan.duration}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="card">
           <div className="label">Last workout</div>
 
           <div className="mt-3 text-[1.7rem] font-semibold text-white">
-            1 min
+            {loading
+              ? '...'
+              : lastMeaningfulWorkout?.duration_minutes != null
+              ? `${lastMeaningfulWorkout.duration_minutes} min`
+              : 'No workout yet'}
           </div>
 
           <div className="mt-4 text-[1rem] text-slate-300">
-            Actual duration
+            {loading
+              ? 'Loading…'
+              : lastMeaningfulWorkout?.date ?? 'No completed session'}
           </div>
         </div>
       </section>
@@ -262,16 +323,20 @@ export default function HomePage() {
       <section className="grid grid-cols-2 gap-4">
         <Link
           href="/checkin"
-          className="block w-full rounded-[1.75rem] bg-white px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100"
+          className={`block w-full rounded-[1.75rem] px-5 py-5 text-center text-[1rem] font-semibold transition ${
+            todayCheckIn
+              ? 'bg-slate-800 text-slate-100 hover:bg-slate-700'
+              : 'bg-white text-slate-900 hover:bg-slate-100'
+          }`}
         >
-          Monday Check-In
+          {todayCheckIn ? 'Check-In Complete ✅' : 'Monday Check-In'}
         </Link>
 
         <Link
           href="/workout"
           className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
         >
-          Start Workout
+          {todayCompletedSession ? 'Review Workout' : 'Start Workout'}
         </Link>
       </section>
     </div>
