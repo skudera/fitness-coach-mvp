@@ -1,97 +1,180 @@
-'use client';
+'use client'
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { WorkoutSnapshot } from '@/components/WorkoutSnapshot';
-import { demoPlan } from '@/lib/mock-data';
-import { getLatestExerciseEntry, loadActiveSession, loadWeeklyPlan, saveActiveSession, saveWorkoutOrder, loadWorkoutOrder } from '@/lib/storage';
-import { WorkoutDayPlan } from '@/types';
-import { getSuggestedWeight, getSuggestedWeightReason } from '@/rules/progression';
+import Link from 'next/link'
 
-function withSuggestions(workout: WorkoutDayPlan): WorkoutDayPlan {
-  return {
-    ...workout,
-    exercises: workout.exercises.map((exercise) => {
-      const latest = getLatestExerciseEntry(exercise.id);
-      const history = latest ? [latest] : undefined;
+function getWorkoutForToday() {
+  const day = new Date().getDay()
+
+  switch (day) {
+    case 0:
       return {
-        ...exercise,
-        suggestedWeight: getSuggestedWeight(history),
-        notes: getSuggestedWeightReason(history),
-      };
-    }),
-  };
+        dayName: 'Sunday',
+        focus: 'Recovery / Mobility',
+        estimatedMinutes: '20–30 min optional',
+        warmup: 'Easy walk + mobility',
+        exercises: [
+          'Light mobility flow',
+          'Hip mobility',
+          'Thoracic rotation',
+          'Hamstring stretch',
+          'Shoulder mobility',
+        ],
+        cardio: 'Optional easy walk',
+        restDay: true,
+      }
+    case 1:
+      return {
+        dayName: 'Monday',
+        focus: 'Chest / Shoulders / Cardio',
+        estimatedMinutes: '74 min planned',
+        warmup: '5 min treadmill + shoulder mobility',
+        exercises: [
+          'Incline DB Press',
+          'Machine Chest Press',
+          'DB Lateral Raise',
+          'Rear Delt Machine',
+          'Cable Fly',
+        ],
+        cardio: 'Elliptical – 15 min',
+        restDay: false,
+      }
+    case 2:
+      return {
+        dayName: 'Tuesday',
+        focus: 'Back / Core / Cardio',
+        estimatedMinutes: '72 min planned',
+        warmup: '5 min treadmill + band work',
+        exercises: [
+          'Lat Pulldown',
+          'Seated Row',
+          'Straight Arm Pulldown',
+          'Cable Curl',
+          'Cable Crunch',
+        ],
+        cardio: 'Bike – 12 min',
+        restDay: false,
+      }
+    case 3:
+      return {
+        dayName: 'Wednesday',
+        focus: 'Legs / Core / Cardio',
+        estimatedMinutes: '75 min planned',
+        warmup: '5 min treadmill + lower body mobility',
+        exercises: [
+          'Leg Press',
+          'Seated Hamstring Curl',
+          'Leg Extension',
+          'Calf Raise',
+          'Ab Machine',
+        ],
+        cardio: 'Elliptical – 12 min',
+        restDay: false,
+      }
+    case 4:
+      return {
+        dayName: 'Thursday',
+        focus: 'Upper Mixed / Basketball',
+        estimatedMinutes: 'Flexible day',
+        warmup: '5 min treadmill + upper mobility',
+        exercises: [
+          'Machine Chest Press',
+          'Lat Pulldown',
+          'Cable Lateral Raise',
+          'Face Pull',
+          'Optional Curl',
+        ],
+        cardio: 'Skip cardio if basketball happens',
+        restDay: false,
+      }
+    case 5:
+      return {
+        dayName: 'Friday',
+        focus: 'Lower / Recovery Conditioning',
+        estimatedMinutes: '70 min planned',
+        warmup: '5 min treadmill + mobility',
+        exercises: [
+          'Hack Squat or Leg Press',
+          'Hamstring Curl',
+          'Adductor / Abductor',
+          'Calf Raise',
+          'Cable Crunch',
+        ],
+        cardio: 'Treadmill incline walk – 10 min',
+        restDay: false,
+      }
+    case 6:
+      return {
+        dayName: 'Saturday',
+        focus: 'Optional Recovery / Mobility',
+        estimatedMinutes: 'Optional',
+        warmup: 'Easy walk + mobility',
+        exercises: [
+          'Mobility',
+          'Stretching',
+          'Light core',
+          'Recovery walk',
+        ],
+        cardio: 'Optional light cardio',
+        restDay: true,
+      }
+    default:
+      return {
+        dayName: 'Today',
+        focus: 'Workout',
+        estimatedMinutes: '',
+        warmup: '',
+        exercises: [],
+        cardio: '',
+        restDay: false,
+      }
+  }
 }
 
 export default function WorkoutPage() {
-  const router = useRouter();
-  const [baseWorkout, setBaseWorkout] = useState<WorkoutDayPlan>(withSuggestions(demoPlan.days[0]));
-  const [order, setOrder] = useState(baseWorkout.exercises);
-  const [started, setStarted] = useState(false);
-
-  useEffect(() => {
-    const savedPlan = loadWeeklyPlan() ?? demoPlan;
-    const monday = withSuggestions(savedPlan.days[0]);
-    const savedOrder = loadWorkoutOrder(monday.dayName);
-    const exercises = savedOrder
-      ? savedOrder.map((id) => monday.exercises.find((ex) => ex.id === id)).filter(Boolean) as typeof monday.exercises
-      : monday.exercises;
-    setBaseWorkout(monday);
-    setOrder(exercises);
-    setStarted(Boolean(loadActiveSession()));
-  }, []);
-
-  const equipmentGroups = useMemo(() => [...new Set(order.map((exercise) => exercise.equipmentGroup))], [order]);
-  const workout = { ...baseWorkout, exercises: order };
-
-  function move(index: number, direction: 'up' | 'down') {
-    const next = [...order];
-    const swapIndex = direction === 'up' ? index - 1 : index + 1;
-    if (swapIndex < 0 || swapIndex >= next.length) return;
-    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
-    setOrder(next);
-    saveWorkoutOrder(workout.dayName, next.map((x) => x.id));
-  }
-
-  function startWorkout() {
-    saveWorkoutOrder(workout.dayName, order.map((x) => x.id));
-    saveActiveSession({ dayName: workout.dayName, startedAt: new Date().toISOString() });
-    setStarted(true);
-    router.push('/workout/warmup');
-  }
+  const workout = getWorkoutForToday()
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 pb-6">
       <div>
         <div className="label">Workout</div>
-        <h1 className="text-2xl font-semibold">Pre-workout snapshot</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {workout.dayName}: {workout.focus}
+        </h1>
+        <p className="mt-2 text-slate-300">{workout.estimatedMinutes}</p>
       </div>
 
-      <WorkoutSnapshot workout={workout} />
+      <section className="card space-y-4">
+        <div className="label">Warmup</div>
+        <p className="text-slate-100">{workout.warmup}</p>
+      </section>
 
-      <div className="card space-y-3">
-        <div>
-          <div className="label">Optional reordering</div>
-          <p className="mt-1 text-sm text-slate-400">Arrange exercises in the order you want. The app saves this and uses it next time.</p>
-        </div>
-        <div className="space-y-2">
-          {order.map((exercise, index) => (
-            <div key={exercise.id} className="flex items-center justify-between rounded-xl bg-slate-800/60 px-3 py-2">
-              <div>
-                <div className="font-medium">{index + 1}. {exercise.name}</div>
-                <div className="text-xs text-slate-400">{exercise.equipmentGroup}</div>
-              </div>
-              <div className="flex gap-2">
-                <button className="rounded-lg bg-slate-700 px-2 py-1 text-xs" onClick={() => move(index, 'up')}>Up</button>
-                <button className="rounded-lg bg-slate-700 px-2 py-1 text-xs" onClick={() => move(index, 'down')}>Down</button>
-              </div>
+      <section className="card space-y-4">
+        <div className="label">Today&apos;s exercises</div>
+        <div className="space-y-3">
+          {workout.exercises.map((exercise) => (
+            <div
+              key={exercise}
+              className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4 text-slate-100"
+            >
+              {exercise}
             </div>
           ))}
         </div>
-        <div className="text-xs text-slate-500">Detected equipment zones today: {equipmentGroups.join(', ')}</div>
-      </div>
+      </section>
 
-      <button onClick={startWorkout} className="block w-full rounded-2xl bg-white px-4 py-3 text-center font-medium text-slate-950">{started ? 'Restart workout from warmup' : 'Start workout'}</button>
+      <section className="card space-y-4">
+        <div className="label">Cardio</div>
+        <p className="text-slate-100">{workout.cardio}</p>
+      </section>
+
+      <div className="grid grid-cols-1 gap-4">
+        <Link
+          href={workout.restDay ? '/progress' : '/workout/warmup'}
+          className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
+        >
+          {workout.restDay ? 'View Progress' : 'Start Workout'}
+        </Link>
+      </div>
     </div>
-  );
+  )
 }

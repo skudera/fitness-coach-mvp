@@ -18,6 +18,69 @@ type BodyMetricRow = {
   notes?: string | null
 }
 
+function getGreeting() {
+  const hour = new Date().getHours()
+
+  if (hour < 12) return 'Good morning'
+  if (hour < 18) return 'Good afternoon'
+  return 'Good evening'
+}
+
+function getTodayPlan() {
+  const day = new Date().getDay()
+
+  switch (day) {
+    case 0:
+      return {
+        label: 'Sunday',
+        focus: 'Recovery / Mobility',
+        duration: '20–30 min optional',
+      }
+    case 1:
+      return {
+        label: 'Monday',
+        focus: 'Chest / Shoulders / Cardio',
+        duration: '74 min planned',
+      }
+    case 2:
+      return {
+        label: 'Tuesday',
+        focus: 'Back / Core / Cardio',
+        duration: '72 min planned',
+      }
+    case 3:
+      return {
+        label: 'Wednesday',
+        focus: 'Legs / Core / Cardio',
+        duration: '75 min planned',
+      }
+    case 4:
+      return {
+        label: 'Thursday',
+        focus: 'Upper Mixed / Basketball',
+        duration: 'Flexible day',
+      }
+    case 5:
+      return {
+        label: 'Friday',
+        focus: 'Lower / Recovery Conditioning',
+        duration: '70 min planned',
+      }
+    case 6:
+      return {
+        label: 'Saturday',
+        focus: 'Optional Recovery / Mobility',
+        duration: 'Optional',
+      }
+    default:
+      return {
+        label: 'Today',
+        focus: 'Workout',
+        duration: 'Planned',
+      }
+  }
+}
+
 export default function HomePage() {
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,24 +111,22 @@ export default function HomePage() {
     return row?.waist ?? null
   }, [metrics])
 
+  const greeting = getGreeting()
+  const todayPlan = getTodayPlan()
+
   return (
     <div className="space-y-6 pb-6">
-
-      {/* HEADER */}
-
       <div>
         <div className="label">Home</div>
 
         <h1 className="text-[2.15rem] font-semibold leading-tight tracking-tight text-white">
-          Good morning, Jonathan
+          {greeting}, Jonathan
         </h1>
 
         <p className="mt-2 text-[1rem] text-slate-300">
-          Today's plan is already adjusted. No decisions needed.
+          Today&apos;s plan is already adjusted. No decisions needed.
         </p>
       </div>
-
-      {/* BODY METRICS */}
 
       <section className="grid grid-cols-3 gap-3">
         <MetricCard
@@ -102,10 +163,7 @@ export default function HomePage() {
         />
       </section>
 
-      {/* DASHBOARD CARDS */}
-
       <section className="grid grid-cols-2 gap-4">
-
         <div className="card">
           <div className="label">Weekly mode</div>
           <div className="mt-3 text-[1.7rem] font-semibold text-white">
@@ -156,11 +214,11 @@ export default function HomePage() {
           <div className="label">Today</div>
 
           <div className="mt-3 text-[1.7rem] font-semibold leading-tight text-white">
-            Chest / Shoulders / Cardio
+            {todayPlan.label}: {todayPlan.focus}
           </div>
 
           <div className="mt-4 text-[1rem] text-slate-300">
-            74 min planned
+            {todayPlan.duration}
           </div>
         </div>
 
@@ -175,20 +233,16 @@ export default function HomePage() {
             Actual duration
           </div>
         </div>
-
       </section>
 
-      {/* COACH NOTE */}
-
       <section className="card space-y-4">
-
         <div className="label">Coach note</div>
 
         <p className="text-[1rem] leading-8 text-slate-100">
           Strength is improving and weight is trending down. Keep cardio steady this week.
         </p>
 
-        <div className="label pt-2">This week's adjustments</div>
+        <div className="label pt-2">This week&apos;s adjustments</div>
 
         <ul className="space-y-3 pl-6 text-[0.95rem] leading-7 text-slate-200">
           <li className="list-disc">
@@ -203,13 +257,9 @@ export default function HomePage() {
             Friday sauna changed to optional only after all planned work is finished.
           </li>
         </ul>
-
       </section>
 
-      {/* ACTION BUTTONS */}
-
       <section className="grid grid-cols-2 gap-4">
-
         <Link
           href="/checkin"
           className="block w-full rounded-[1.75rem] bg-white px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100"
@@ -223,9 +273,7 @@ export default function HomePage() {
         >
           Start Workout
         </Link>
-
       </section>
-
     </div>
   )
 }
