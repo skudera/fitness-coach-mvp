@@ -9,6 +9,8 @@ import {
   loadTodayCheckInFromSupabase,
   getLocalDateString,
   getTomorrowWorkoutLabel,
+  getWeeklySettings,
+  getWeekStartDate,
   type CompletedSessionRow,
 } from '@/lib/storage-supabase'
 
@@ -27,7 +29,6 @@ type BodyMetricRow = {
 
 function getGreeting() {
   const hour = new Date().getHours()
-
   if (hour < 12) return 'Good morning'
   if (hour < 18) return 'Good afternoon'
   return 'Good evening'
@@ -38,53 +39,21 @@ function getTodayPlan() {
 
   switch (day) {
     case 0:
-      return {
-        label: 'Sunday',
-        focus: 'Recovery / Mobility',
-        duration: '20–30 min optional',
-      }
+      return { label: 'Sunday', focus: 'Recovery / Mobility', duration: '20–30 min optional' }
     case 1:
-      return {
-        label: 'Monday',
-        focus: 'Chest / Shoulders / Cardio',
-        duration: '74 min planned',
-      }
+      return { label: 'Monday', focus: 'Chest / Shoulders / Cardio', duration: '74 min planned' }
     case 2:
-      return {
-        label: 'Tuesday',
-        focus: 'Back / Core / Cardio',
-        duration: '72 min planned',
-      }
+      return { label: 'Tuesday', focus: 'Back / Core / Cardio', duration: '72 min planned' }
     case 3:
-      return {
-        label: 'Wednesday',
-        focus: 'Legs / Core / Cardio',
-        duration: '75 min planned',
-      }
+      return { label: 'Wednesday', focus: 'Legs / Core / Cardio', duration: '75 min planned' }
     case 4:
-      return {
-        label: 'Thursday',
-        focus: 'Upper Mixed / Basketball',
-        duration: 'Flexible day',
-      }
+      return { label: 'Thursday', focus: 'Upper Mixed / Basketball', duration: 'Flexible day' }
     case 5:
-      return {
-        label: 'Friday',
-        focus: 'Lower / Recovery Conditioning',
-        duration: '70 min planned',
-      }
+      return { label: 'Friday', focus: 'Lower / Recovery Conditioning', duration: '70 min planned' }
     case 6:
-      return {
-        label: 'Saturday',
-        focus: 'Optional Recovery / Mobility',
-        duration: 'Optional',
-      }
+      return { label: 'Saturday', focus: 'Optional Recovery / Mobility', duration: 'Optional' }
     default:
-      return {
-        label: 'Today',
-        focus: 'Workout',
-        duration: 'Planned',
-      }
+      return { label: 'Today', focus: 'Workout', duration: 'Planned' }
   }
 }
 
@@ -193,25 +162,31 @@ export default function HomePage() {
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([])
   const [todayCheckIn, setTodayCheckIn] = useState<BodyMetricRow | null>(null)
   const [sessions, setSessions] = useState<CompletedSessionRow[]>([])
+  const [basketballStatus, setBasketballStatus] = useState('unsure')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       try {
-        const [metricRows, sessionRows, todayRow] = await Promise.all([
+        const weekStart = getWeekStartDate()
+
+        const [metricRows, sessionRows, todayRow, weekly] = await Promise.all([
           loadBodyMetricsHistoryFromSupabase(),
           loadCompletedSessionsFromSupabase(),
           loadTodayCheckInFromSupabase(),
+          getWeeklySettings(weekStart),
         ])
 
         setMetrics(Array.isArray(metricRows) ? metricRows : [])
         setSessions(Array.isArray(sessionRows) ? sessionRows : [])
         setTodayCheckIn(todayRow ?? null)
+        setBasketballStatus(weekly?.basketball_status ?? 'unsure')
       } catch (error) {
         console.error('Home load error', error)
         setMetrics([])
         setSessions([])
         setTodayCheckIn(null)
+        setBasketballStatus('unsure')
       } finally {
         setLoading(false)
       }
@@ -220,13 +195,8 @@ export default function HomePage() {
     load()
   }, [])
 
-  const latestMetric = useMemo(() => {
-    return metrics.length ? metrics[metrics.length - 1] : null
-  }, [metrics])
-
-  const oldestMetric = useMemo(() => {
-    return metrics.length ? metrics[0] : null
-  }, [metrics])
+  const latestMetric = useMemo(() => (metrics.length ? metrics[metrics.length - 1] : null), [metrics])
+  const oldestMetric = useMemo(() => (metrics.length ? metrics[0] : null), [metrics])
 
   const latestWaist = useMemo(() => {
     const reversed = [...metrics].reverse()
@@ -238,21 +208,25 @@ export default function HomePage() {
   const todayPlan = getTodayPlan()
   const todayDate = getLocalDateString()
 
-  const meaningfulSessions = useMemo(() => {
-    return sessions.filter((session) => (session.duration_minutes ?? 0) >= 5)
-  }, [sessions])
+  const meaningfulSessions = useMemo(
+    () => sessions.filter((session) => (session.duration_minutes ?? 0) >= 5),
+    [sessions]
+  )
 
-  const meaningfulSessionDates = useMemo(() => {
-    return meaningfulSessions.map((session) => session.date)
-  }, [meaningfulSessions])
+  const meaningfulSessionDates = useMemo(
+    () => meaningfulSessions.map((session) => session.date),
+    [meaningfulSessions]
+  )
 
-  const todayCompletedSession = useMemo(() => {
-    return meaningfulSessions.find((session) => session.date === todayDate) ?? null
-  }, [meaningfulSessions, todayDate])
+  const todayCompletedSession = useMemo(
+    () => meaningfulSessions.find((session) => session.date === todayDate) ?? null,
+    [meaningfulSessions, todayDate]
+  )
 
-  const lastMeaningfulWorkout = useMemo(() => {
-    return meaningfulSessions[0] ?? null
-  }, [meaningfulSessions])
+  const lastMeaningfulWorkout = useMemo(
+    () => meaningfulSessions[0] ?? null,
+    [meaningfulSessions]
+  )
 
   const nextWorkoutLabel = getTomorrowWorkoutLabel()
 
@@ -266,18 +240,18 @@ export default function HomePage() {
     }))
   }, [meaningfulSessionDates])
 
-  const streakCount = useMemo(() => {
-    return getWorkoutStreak(meaningfulSessionDates)
-  }, [meaningfulSessionDates])
+  const streakCount = useMemo(() => getWorkoutStreak(meaningfulSessionDates), [meaningfulSessionDates])
 
-  const coachInsight = useMemo(() => {
-    return buildCoachInsight({
-      latestMetric,
-      oldestMetric,
-      lastMeaningfulWorkout,
-      streakCount,
-    })
-  }, [latestMetric, oldestMetric, lastMeaningfulWorkout, streakCount])
+  const coachInsight = useMemo(
+    () =>
+      buildCoachInsight({
+        latestMetric,
+        oldestMetric,
+        lastMeaningfulWorkout,
+        streakCount,
+      }),
+    [latestMetric, oldestMetric, lastMeaningfulWorkout, streakCount]
+  )
 
   return (
     <div className="space-y-6 pb-6">
@@ -294,34 +268,32 @@ export default function HomePage() {
       </div>
 
       <section className="card space-y-4">
-  <div className="label">Momentum</div>
+        <div className="label">Momentum</div>
 
-  <div>
-    <div className="label">Week Progress</div>
-    <div className="mt-3 flex items-center justify-between gap-2">
-      {weekProgress.map((day, index) => (
-        <div key={`${day.date}-${index}`} className="flex flex-col items-center gap-2">
-          <div
-            className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${
-              day.completed
-                ? 'bg-emerald-500 text-slate-950'
-                : 'bg-slate-800 text-slate-300'
-            }`}
-          >
-            {day.completed ? '✓' : day.label}
+        <div>
+          <div className="label">Week Progress</div>
+          <div className="mt-3 flex items-center justify-between gap-2">
+            {weekProgress.map((day, index) => (
+              <div key={`${day.date}-${index}`} className="flex flex-col items-center gap-2">
+                <div
+                  className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${
+                    day.completed ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-300'
+                  }`}
+                >
+                  {day.completed ? '✓' : day.label}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      ))}
-    </div>
-  </div>
 
-  <div className="pt-4">
-    <div className="label">Streak</div>
-    <div className="mt-2 text-[1.3rem] font-semibold text-white">
-      {loading ? '...' : `${streakCount} workout${streakCount === 1 ? '' : 's'} in a row`}
-    </div>
-  </div>
-</section>
+        <div className="pt-2">
+          <div className="label">Streak</div>
+          <div className="mt-2 text-[1.3rem] font-semibold text-white">
+            {loading ? '...' : `${streakCount} workout${streakCount === 1 ? '' : 's'} in a row`}
+          </div>
+        </div>
+      </section>
 
       <section className="card space-y-4">
         <div className="label">{coachInsight.title}</div>
@@ -333,35 +305,15 @@ export default function HomePage() {
       <section className="grid grid-cols-3 gap-3">
         <MetricCard
           label="Weight"
-          value={
-            loading
-              ? '...'
-              : latestMetric?.weight != null
-              ? `${latestMetric.weight} lb`
-              : '—'
-          }
+          value={loading ? '...' : latestMetric?.weight != null ? `${latestMetric.weight} lb` : '—'}
         />
-
         <MetricCard
           label="Body Fat"
-          value={
-            loading
-              ? '...'
-              : latestMetric?.body_fat != null
-              ? `${latestMetric.body_fat}%`
-              : '—'
-          }
+          value={loading ? '...' : latestMetric?.body_fat != null ? `${latestMetric.body_fat}%` : '—'}
         />
-
         <MetricCard
           label="Waist"
-          value={
-            loading
-              ? '...'
-              : latestWaist != null
-              ? `${latestWaist}"`
-              : '—'
-          }
+          value={loading ? '...' : latestWaist != null ? `${latestWaist}"` : '—'}
         />
       </section>
 
@@ -375,22 +327,16 @@ export default function HomePage() {
 
         <div className="card">
           <div className="label">Basketball Thursday</div>
-          <div className="mt-3 text-[1.7rem] font-semibold text-white">
-            Not planned
+          <div className="mt-3 text-[1.6rem] font-semibold text-white capitalize">
+            {basketballStatus}
           </div>
         </div>
 
         <div className="card">
           <div className="label">Latest weight</div>
-
           <div className="mt-3 text-[1.7rem] font-semibold text-white">
-            {loading
-              ? '...'
-              : latestMetric?.weight != null
-              ? `${latestMetric.weight} lbs`
-              : '—'}
+            {loading ? '...' : latestMetric?.weight != null ? `${latestMetric.weight} lbs` : '—'}
           </div>
-
           <div className="mt-3 text-[0.9rem] text-slate-400">
             {loading ? 'Loading…' : latestMetric?.date ?? 'No date'}
           </div>
@@ -398,15 +344,9 @@ export default function HomePage() {
 
         <div className="card">
           <div className="label">Body fat</div>
-
           <div className="mt-3 text-[1.7rem] font-semibold text-white">
-            {loading
-              ? '...'
-              : latestMetric?.body_fat != null
-              ? `${latestMetric.body_fat}%`
-              : '—'}
+            {loading ? '...' : latestMetric?.body_fat != null ? `${latestMetric.body_fat}%` : '—'}
           </div>
-
           <div className="mt-3 text-[0.9rem] text-slate-400">
             Latest loaded checkpoint
           </div>
@@ -420,15 +360,12 @@ export default function HomePage() {
               <div className="mt-3 text-[1.45rem] font-semibold leading-tight text-white">
                 {todayPlan.label}: {todayPlan.focus}
               </div>
-
               <div className="mt-3 text-[1rem] font-semibold text-emerald-400">
                 Completed ✅
               </div>
-
               <div className="mt-3 text-[0.95rem] text-slate-300">
                 {todayCompletedSession.duration_minutes} min actual
               </div>
-
               <div className="mt-3 text-[0.9rem] text-slate-400">
                 Next: {nextWorkoutLabel}
               </div>
@@ -438,7 +375,6 @@ export default function HomePage() {
               <div className="mt-3 text-[1.7rem] font-semibold leading-tight text-white">
                 {todayPlan.label}: {todayPlan.focus}
               </div>
-
               <div className="mt-4 text-[1rem] text-slate-300">
                 {todayPlan.duration}
               </div>
@@ -448,7 +384,6 @@ export default function HomePage() {
 
         <div className="card">
           <div className="label">Last workout</div>
-
           <div className="mt-3 text-[1.7rem] font-semibold text-white">
             {loading
               ? '...'
@@ -456,11 +391,8 @@ export default function HomePage() {
               ? `${lastMeaningfulWorkout.duration_minutes} min`
               : 'No workout yet'}
           </div>
-
           <div className="mt-4 text-[1rem] text-slate-300">
-            {loading
-              ? 'Loading…'
-              : lastMeaningfulWorkout?.date ?? 'No completed session'}
+            {loading ? 'Loading…' : lastMeaningfulWorkout?.date ?? 'No completed session'}
           </div>
         </div>
       </section>
@@ -475,17 +407,9 @@ export default function HomePage() {
         <div className="label pt-2">This week&apos;s adjustments</div>
 
         <ul className="space-y-3 pl-6 text-[0.95rem] leading-7 text-slate-200">
-          <li className="list-disc">
-            Increase lateral raise weight from 20 to 25 lbs.
-          </li>
-
-          <li className="list-disc">
-            Thursday cardio restored because basketball is not planned.
-          </li>
-
-          <li className="list-disc">
-            Friday sauna changed to optional only after all planned work is finished.
-          </li>
+          <li className="list-disc">Increase lateral raise weight from 20 to 25 lbs.</li>
+          <li className="list-disc">Thursday cardio restored because basketball is not planned.</li>
+          <li className="list-disc">Friday sauna changed to optional only after all planned work is finished.</li>
         </ul>
       </section>
 
@@ -493,9 +417,7 @@ export default function HomePage() {
         <Link
           href="/checkin"
           className={`block w-full rounded-[1.75rem] px-5 py-5 text-center text-[1rem] font-semibold transition ${
-            todayCheckIn
-              ? 'bg-slate-800 text-slate-100 hover:bg-slate-700'
-              : 'bg-white text-slate-900 hover:bg-slate-100'
+            todayCheckIn ? 'bg-slate-800 text-slate-100 hover:bg-slate-700' : 'bg-white text-slate-900 hover:bg-slate-100'
           }`}
         >
           {todayCheckIn ? 'Check-In Complete ✅' : 'Monday Check-In'}

@@ -59,6 +59,16 @@ export function getTomorrowWorkoutLabel() {
   }
 }
 
+export function getWeekStartDate() {
+  const now = new Date()
+  const day = now.getDay() // 0=Sun, 1=Mon, ...
+  const mondayOffset = day === 0 ? -6 : 1 - day
+  const monday = new Date(now)
+  monday.setDate(now.getDate() + mondayOffset)
+  monday.setHours(0, 0, 0, 0)
+  return getLocalDateString(monday)
+}
+
 export async function loadBodyMetricsHistoryFromSupabase(): Promise<BodyMetricRow[]> {
   const { data, error } = await supabase
     .from('body_metrics')
@@ -226,4 +236,36 @@ export async function loadCompletedSessionsFromSupabase(): Promise<CompletedSess
   }
 
   return (data ?? []) as CompletedSessionRow[]
+}
+
+export async function getWeeklySettings(weekStart: string) {
+  const { data, error } = await supabase
+    .from('weekly_settings')
+    .select('*')
+    .eq('week_start', weekStart)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error('weekly settings load error', error)
+    return null
+  }
+
+  return data
+}
+
+export async function saveWeeklyBasketball(weekStart: string, status: string) {
+  const { error } = await supabase
+    .from('weekly_settings')
+    .insert([
+      {
+        week_start: weekStart,
+        basketball_status: status,
+      },
+    ])
+
+  if (error) {
+    console.error('weekly basketball save error', error)
+  }
 }
