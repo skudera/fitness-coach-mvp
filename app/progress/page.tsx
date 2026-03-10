@@ -163,7 +163,7 @@ export default function ProgressPage() {
 
       <section className="card space-y-4">
         <div className="label">Weight trend</div>
-        <div className="h-64 w-full">
+        <div className="h-64 min-h-[16rem] w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
@@ -195,7 +195,7 @@ export default function ProgressPage() {
 
       <section className="card space-y-4">
         <div className="label">Body fat trend</div>
-        <div className="h-64 w-full">
+        <div className="h-64 min-h-[16rem] w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
@@ -227,7 +227,7 @@ export default function ProgressPage() {
 
       <section className="card space-y-4">
         <div className="label">Water trend</div>
-        <div className="h-64 w-full">
+        <div className="h-64 min-h-[16rem] w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
