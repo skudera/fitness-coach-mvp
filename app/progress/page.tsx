@@ -176,7 +176,7 @@ export default function ProgressPage() {
                 domain={weightDomain}
                 stroke="#94a3b8"
                 tick={{ fill: '#94a3b8', fontSize: 12 }}
-                tickFormatter={(v) => Math.round(v)}
+                tickFormatter={(v) => String(Math.round(Number(v)))}
                 tickCount={6}
               />
               <Tooltip content={<MetricTooltip suffix=" lb" />} />
