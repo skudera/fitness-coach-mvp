@@ -17,6 +17,50 @@ function formatValue(value?: number | null, suffix = '') {
   return `${value}${suffix}`
 }
 
+function getYAxisDomain(values: Array<number | null | undefined>, paddingPercent = 0.02) {
+  const clean = values.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v))
+
+  if (!clean.length) return [0, 100]
+
+  const min = Math.min(...clean)
+  const max = Math.max(...clean)
+
+  if (min === max) {
+    const pad = Math.max(1, Math.abs(min) * paddingPercent)
+    return [Math.floor(min - pad), Math.ceil(max + pad)]
+  }
+
+  const range = max - min
+  const pad = range * paddingPercent
+
+  return [Number((min - pad).toFixed(2)), Number((max + pad).toFixed(2))]
+}
+
+function MetricTooltip({
+  active,
+  payload,
+  label,
+  suffix,
+}: {
+  active?: boolean
+  payload?: Array<{ value?: number | null }>
+  label?: string
+  suffix: string
+}) {
+  if (!active || !payload || !payload.length) return null
+
+  const value = payload[0]?.value
+
+  return (
+    <div className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 shadow-lg">
+      <div className="font-semibold">{label}</div>
+      <div className="mt-1 text-slate-300">
+        {value != null ? `${value}${suffix}` : '—'}
+      </div>
+    </div>
+  )
+}
+
 export default function ProgressPage() {
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -43,15 +87,7 @@ export default function ProgressPage() {
 
   const latestWithMeasurements = useMemo(() => {
     const reversed = [...metrics].reverse()
-    return (
-      reversed.find(
-        (row) =>
-          row.waist != null ||
-          row.chest != null ||
-          row.thigh != null ||
-          row.bicep != null
-      ) ?? null
-    )
+    return reversed.find((row) => row.waist != null) ?? null
   }, [metrics])
 
   const chartData = useMemo(() => {
@@ -61,11 +97,23 @@ export default function ProgressPage() {
       bodyFat: row.body_fat ?? null,
       water: row.water_percent ?? null,
       waist: row.waist ?? null,
-      chest: row.chest ?? null,
-      thigh: row.thigh ?? null,
-      bicep: row.bicep ?? null,
     }))
   }, [metrics])
+
+  const weightDomain = useMemo(
+    () => getYAxisDomain(chartData.map((row) => row.weight), 0.08),
+    [chartData]
+  )
+
+  const bodyFatDomain = useMemo(
+    () => getYAxisDomain(chartData.map((row) => row.bodyFat), 0.1),
+    [chartData]
+  )
+
+  const waterDomain = useMemo(
+    () => getYAxisDomain(chartData.map((row) => row.water), 0.05),
+    [chartData]
+  )
 
   return (
     <div className="space-y-6 pb-6">
@@ -119,9 +167,19 @@ export default function ProgressPage() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-              <XAxis dataKey="date" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <Tooltip />
+              <XAxis
+                dataKey="date"
+                stroke="#94a3b8"
+                tick={{ fill: '#94a3b8', fontSize: 12 }}
+              />
+              <YAxis
+                domain={weightDomain}
+                stroke="#94a3b8"
+                tick={{ fill: '#94a3b8', fontSize: 12 }}
+                tickFormatter={(v) => Math.round(v)}
+                tickCount={6}
+              />
+              <Tooltip content={<MetricTooltip suffix=" lb" />} />
               <Line
                 type="monotone"
                 dataKey="weight"
@@ -141,9 +199,19 @@ export default function ProgressPage() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-              <XAxis dataKey="date" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <Tooltip />
+              <XAxis
+                dataKey="date"
+                stroke="#94a3b8"
+                tick={{ fill: '#94a3b8', fontSize: 12 }}
+              />
+              <YAxis
+                domain={bodyFatDomain}
+                stroke="#94a3b8"
+                tick={{ fill: '#94a3b8', fontSize: 12 }}
+                tickFormatter={(v) => Number(v).toFixed(1)}
+                tickCount={6}
+              />
+              <Tooltip content={<MetricTooltip suffix="%" />} />
               <Line
                 type="monotone"
                 dataKey="bodyFat"
@@ -163,9 +231,19 @@ export default function ProgressPage() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-              <XAxis dataKey="date" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <Tooltip />
+              <XAxis
+                dataKey="date"
+                stroke="#94a3b8"
+                tick={{ fill: '#94a3b8', fontSize: 12 }}
+              />
+              <YAxis
+                domain={waterDomain}
+                stroke="#94a3b8"
+                tick={{ fill: '#94a3b8', fontSize: 12 }}
+                tickFormatter={(v) => Number(v).toFixed(1)}
+                tickCount={6}
+              />
+              <Tooltip content={<MetricTooltip suffix="%" />} />
               <Line
                 type="monotone"
                 dataKey="water"
@@ -182,32 +260,11 @@ export default function ProgressPage() {
       <section className="card space-y-4">
         <div className="label">Measurements</div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
             <div className="label">Waist</div>
             <div className="mt-2 text-2xl font-semibold text-white">
               {formatValue(latestWithMeasurements?.waist, '"')}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Chest</div>
-            <div className="mt-2 text-2xl font-semibold text-white">
-              {formatValue(latestWithMeasurements?.chest, '"')}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Thigh</div>
-            <div className="mt-2 text-2xl font-semibold text-white">
-              {formatValue(latestWithMeasurements?.thigh, '"')}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Bicep</div>
-            <div className="mt-2 text-2xl font-semibold text-white">
-              {formatValue(latestWithMeasurements?.bicep, '"')}
             </div>
           </div>
         </div>
