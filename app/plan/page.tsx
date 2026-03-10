@@ -31,6 +31,15 @@ export default function PlanPage() {
   const selectedWorkout =
     weekPlan.find((item) => item.day === selectedDay)?.workout ?? weekPlan[0].workout
 
+  const cardioText =
+    selectedWorkout.dayName === 'Thursday'
+      ? basketballStatus === 'yes'
+        ? 'Skip cardio if basketball happens'
+        : basketballStatus === 'unsure'
+        ? 'Cardio optional depending on basketball'
+        : 'Elliptical – 10 min'
+      : selectedWorkout.cardio
+
   return (
     <div className="space-y-6 pb-6">
       <div>
@@ -111,17 +120,10 @@ export default function PlanPage() {
         </div>
 
         <div>
-<div className="label mb-2">Cardio</div>
-
-<div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4 text-slate-100">
-  {selectedWorkout.dayName === 'Thursday'
-    ? basketballStatus === 'yes'
-      ? 'Skip cardio if basketball happens'
-      : basketballStatus === 'unsure'
-      ? 'Cardio optional depending on basketball'
-      : 'Elliptical – 10 min'
-    : selectedWorkout.cardio}
-</div>
+          <div className="label mb-2">Cardio</div>
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4 text-slate-100">
+            {cardioText}
+          </div>
         </div>
       </section>
 

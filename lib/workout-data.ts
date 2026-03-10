@@ -31,38 +31,43 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
         cardio: 'Optional easy walk',
         restDay: true,
       }
+
     case 1:
       return {
         dayName: 'Monday',
         focus: 'Chest / Shoulders / Cardio',
-        estimatedMinutes: '74 min planned',
+        estimatedMinutes: '75 min planned',
         warmup: '5 min treadmill + shoulder mobility',
         exercises: [
           'Incline DB Press',
           'Machine Chest Press',
-          'DB Lateral Raise',
+          'Cable Lateral Raise',
           'Rear Delt Machine',
           'Cable Fly',
+          'Triceps Pressdown',
         ],
-        cardio: 'Elliptical – 15 min',
+        cardio: 'Elliptical – 12 min',
         restDay: false,
       }
+
     case 2:
       return {
         dayName: 'Tuesday',
         focus: 'Back / Core / Cardio',
-        estimatedMinutes: '72 min planned',
+        estimatedMinutes: '75 min planned',
         warmup: '5 min treadmill + band work',
         exercises: [
           'Lat Pulldown',
           'Seated Row',
           'Straight Arm Pulldown',
+          'Face Pull',
           'Cable Curl',
           'Cable Crunch',
         ],
         cardio: 'Bike – 12 min',
         restDay: false,
       }
+
     case 3:
       return {
         dayName: 'Wednesday',
@@ -74,43 +79,49 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
           'Seated Hamstring Curl',
           'Leg Extension',
           'Calf Raise',
+          'Hip Abductor',
           'Ab Machine',
         ],
         cardio: 'Elliptical – 12 min',
         restDay: false,
       }
+
     case 4:
       return {
         dayName: 'Thursday',
         focus: 'Upper Mixed / Basketball',
-        estimatedMinutes: 'Flexible day',
+        estimatedMinutes: '70 min planned',
         warmup: '5 min treadmill + upper mobility',
         exercises: [
           'Machine Chest Press',
           'Lat Pulldown',
           'Cable Lateral Raise',
           'Face Pull',
-          'Optional Curl',
+          'Cable Curl',
+          'Triceps Pressdown',
         ],
-        cardio: 'Skip cardio if basketball happens',
+        cardio: 'Cardio optional depending on basketball',
         restDay: false,
       }
+
     case 5:
       return {
         dayName: 'Friday',
         focus: 'Lower / Recovery Conditioning',
-        estimatedMinutes: '70 min planned',
+        estimatedMinutes: '75 min planned',
         warmup: '5 min treadmill + mobility',
         exercises: [
           'Hack Squat or Leg Press',
           'Hamstring Curl',
-          'Adductor / Abductor',
+          'Adductor Machine',
+          'Abductor Machine',
           'Calf Raise',
           'Cable Crunch',
         ],
-        cardio: 'Treadmill incline walk – 10 min',
+        cardio: 'Treadmill incline walk – 12 min',
         restDay: false,
       }
+
     case 6:
       return {
         dayName: 'Saturday',
@@ -126,6 +137,7 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
         cardio: 'Optional light cardio',
         restDay: true,
       }
+
     default:
       return {
         dayName: 'Today',
@@ -171,7 +183,8 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
     name.includes('extension') ||
     name.includes('calf') ||
     name.includes('adductor') ||
-    name.includes('abductor')
+    name.includes('abductor') ||
+    name.includes('pressdown')
   ) {
     return { sets: 3, reps: '10–15' }
   }
