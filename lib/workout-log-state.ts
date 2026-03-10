@@ -1,54 +1,64 @@
-export type LoggedSetRow = {
+export type WorkoutSetInput = {
   weight: string
   reps: string
 }
 
-export type ExerciseEntryState = {
-  sets: LoggedSetRow[]
+export type WorkoutExerciseEntry = {
+  name: string
+  substitutedFrom?: string | null
+  sets: WorkoutSetInput[]
   difficulty: string
   discomfort: string
-  notes: string
+  note: string
 }
 
 export type WorkoutProgressState = {
-  startedAt: number
-  step: number
-  exerciseOrder: number[]
-  entries: ExerciseEntryState[]
+  date: string
+  dayName: string
+  startedAt: string
+  currentIndex: number
   completedCardio: boolean
+  skippedIndices: number[]
+  completedIndices: number[]
+  entries: WorkoutExerciseEntry[]
 }
 
-function getKey(date: string, dayName: string) {
-  return `fitness-coach:workout-progress:${date}:${dayName}`
+function getStorageKey(date: string, dayName: string) {
+  return `fitness-coach-workout:${date}:${dayName}`
 }
 
 export function loadWorkoutProgress(date: string, dayName: string): WorkoutProgressState | null {
+  if (typeof window === 'undefined') return null
+
   try {
-    const raw = localStorage.getItem(getKey(date, dayName))
+    const raw = window.localStorage.getItem(getStorageKey(date, dayName))
     if (!raw) return null
     return JSON.parse(raw) as WorkoutProgressState
   } catch (error) {
-    console.error('Could not load workout progress', error)
+    console.error('loadWorkoutProgress error', error)
     return null
   }
 }
 
-export function saveWorkoutProgress(
-  date: string,
-  dayName: string,
-  state: WorkoutProgressState
-) {
+export function saveWorkoutProgress(progress: WorkoutProgressState) {
+  if (typeof window === 'undefined') return
+
   try {
-    localStorage.setItem(getKey(date, dayName), JSON.stringify(state))
+    window.localStorage.setItem(
+      getStorageKey(progress.date, progress.dayName),
+      JSON.stringify(progress)
+    )
   } catch (error) {
-    console.error('Could not save workout progress', error)
+    console.error('saveWorkoutProgress error', error)
   }
 }
 
 export function clearWorkoutProgress(date: string, dayName: string) {
+  if (typeof window === 'undefined') return
+
   try {
-    localStorage.removeItem(getKey(date, dayName))
+    window.localStorage.removeItem(getStorageKey(date, dayName))
   } catch (error) {
-    console.error('Could not clear workout progress', error)
+    console.error('clearWorkoutProgress error', error)
   }
 }

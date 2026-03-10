@@ -184,7 +184,8 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
     name.includes('calf') ||
     name.includes('adductor') ||
     name.includes('abductor') ||
-    name.includes('pressdown')
+    name.includes('pressdown') ||
+    name.includes('face pull')
   ) {
     return { sets: 3, reps: '10–15' }
   }
@@ -199,4 +200,94 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
   }
 
   return { sets: 3, reps: '8–12' }
+}
+
+export function getExerciseSubstitutions(exerciseName: string): string[] {
+  const name = exerciseName.toLowerCase()
+
+  if (name.includes('incline db press')) {
+    return ['Machine Chest Press', 'Cable Chest Press', 'Incline Push-Up']
+  }
+
+  if (name.includes('machine chest press')) {
+    return ['Cable Chest Press', 'Incline DB Press', 'Push-Up']
+  }
+
+  if (name.includes('cable lateral raise')) {
+    return ['Machine Lateral Raise', 'Rear Delt Machine', 'Face Pull']
+  }
+
+  if (name.includes('rear delt')) {
+    return ['Face Pull', 'Cable Lateral Raise', 'Reverse Pec Deck']
+  }
+
+  if (name.includes('cable fly')) {
+    return ['Pec Deck', 'Machine Chest Press', 'Push-Up']
+  }
+
+  if (name.includes('triceps pressdown')) {
+    return ['Overhead Rope Extension', 'Machine Dip', 'Close-Grip Push-Up']
+  }
+
+  if (name.includes('lat pulldown')) {
+    return ['Neutral-Grip Pulldown', 'High Row Machine', 'Assisted Pull-Up']
+  }
+
+  if (name.includes('seated row')) {
+    return ['Chest Supported Row', 'Cable Row', 'Hammer Strength Row']
+  }
+
+  if (name.includes('straight arm pulldown')) {
+    return ['Cable Row', 'Lat Prayer Pulldown', 'Face Pull']
+  }
+
+  if (name.includes('face pull')) {
+    return ['Rear Delt Machine', 'Cable Lateral Raise', 'Reverse Pec Deck']
+  }
+
+  if (name.includes('cable curl')) {
+    return ['Hammer Curl', 'EZ Bar Curl', 'Preacher Curl Machine']
+  }
+
+  if (name.includes('cable crunch')) {
+    return ['Ab Machine', 'Decline Crunch', 'Plank']
+  }
+
+  if (name.includes('leg press')) {
+    return ['Hack Squat', 'Smith Squat', 'Goblet Squat']
+  }
+
+  if (name.includes('hamstring curl')) {
+    return ['Lying Leg Curl', 'Nordic Curl', 'Glute Bridge']
+  }
+
+  if (name.includes('leg extension')) {
+    return ['Split Squat', 'Goblet Squat', 'Wall Sit']
+  }
+
+  if (name.includes('calf raise')) {
+    return ['Seated Calf Raise', 'Leg Press Calf Raise', 'Bodyweight Calf Raise']
+  }
+
+  if (name.includes('hip abductor')) {
+    return ['Lateral Band Walk', 'Cable Hip Abduction', 'Glute Bridge']
+  }
+
+  if (name.includes('ab machine')) {
+    return ['Cable Crunch', 'Dead Bug', 'Plank']
+  }
+
+  if (name.includes('hack squat')) {
+    return ['Leg Press', 'Smith Squat', 'Goblet Squat']
+  }
+
+  if (name.includes('adductor machine')) {
+    return ['Cable Adduction', 'Bodyweight Side Lunge', 'Split Squat']
+  }
+
+  if (name.includes('abductor machine')) {
+    return ['Hip Abductor', 'Lateral Band Walk', 'Cable Hip Abduction']
+  }
+
+  return ['Cable Variation', 'Machine Variation', 'Bodyweight Alternative']
 }

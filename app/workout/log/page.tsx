@@ -1,188 +1,259 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
-import { getWorkoutForToday, getTargetForExercise } from '@/lib/workout-data'
-import { saveWorkoutAndLogsToSupabase, getLocalDateString } from '@/lib/storage-supabase'
+import { useRouter } from 'next/navigation'
 import {
-  clearWorkoutProgress,
+  getWorkoutForToday,
+  getTargetForExercise,
+  getExerciseSubstitutions,
+} from '@/lib/workout-data'
+import { getLocalDateString, saveWorkoutAndLogsToSupabase } from '@/lib/storage-supabase'
+import {
   loadWorkoutProgress,
   saveWorkoutProgress,
-  type ExerciseEntryState,
+  clearWorkoutProgress,
+  type WorkoutExerciseEntry,
+  type WorkoutProgressState,
 } from '@/lib/workout-log-state'
 
-function createEmptyExercise(): ExerciseEntryState {
-  return {
-    sets: [
-      { weight: '', reps: '' },
-      { weight: '', reps: '' },
-      { weight: '', reps: '' },
-    ],
-    difficulty: '',
-    discomfort: 'None',
-    notes: '',
-  }
+function createBlankSets() {
+  return [
+    { weight: '', reps: '' },
+    { weight: '', reps: '' },
+    { weight: '', reps: '' },
+  ]
 }
 
-const difficultyOptions = ['Easy', 'Moderate', 'Hard']
-const discomfortOptions = ['None', 'Shoulder', 'Back', 'Both']
+function buildInitialEntries(exercises: string[]): WorkoutExerciseEntry[] {
+  return exercises.map((name) => ({
+    name,
+    substitutedFrom: null,
+    sets: createBlankSets(),
+    difficulty: '',
+    discomfort: '',
+    note: '',
+  }))
+}
+
+function getNextPendingIndex(
+  currentIndex: number,
+  entriesLength: number,
+  completedIndices: number[]
+) {
+  for (let i = currentIndex + 1; i < entriesLength; i += 1) {
+    if (!completedIndices.includes(i)) return i
+  }
+
+  for (let i = 0; i < entriesLength; i += 1) {
+    if (!completedIndices.includes(i)) return i
+  }
+
+  return -1
+}
 
 export default function WorkoutLogPage() {
+  const router = useRouter()
   const workout = useMemo(() => getWorkoutForToday(), [])
-  const today = useMemo(() => getLocalDateString(), [])
+  const date = getLocalDateString()
 
-  const [step, setStep] = useState(0) // 0 = warmup, 1..n = exercises, n+1 = cardio
-  const [startedAt, setStartedAt] = useState(Date.now())
-  const [exerciseOrder, setExerciseOrder] = useState<number[]>([])
-  const [entries, setEntries] = useState<ExerciseEntryState[]>([])
+  const [startedAt, setStartedAt] = useState<string>(new Date().toISOString())
+  const [entries, setEntries] = useState<WorkoutExerciseEntry[]>(() =>
+    buildInitialEntries(workout.exercises)
+  )
+  const [currentIndex, setCurrentIndex] = useState(0)
   const [completedCardio, setCompletedCardio] = useState(false)
+  const [skippedIndices, setSkippedIndices] = useState<number[]>([])
+  const [completedIndices, setCompletedIndices] = useState<number[]>([])
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  const [hydrated, setHydrated] = useState(false)
-
-  const totalExercises = workout.exercises.length
-  const cardioStep = totalExercises + 1
+  const [showSubstitutions, setShowSubstitutions] = useState(false)
+  const [isLoaded, setIsLoaded] = useState(false)
 
   useEffect(() => {
-    const defaultEntries = workout.exercises.map(() => createEmptyExercise())
-    const defaultOrder = workout.exercises.map((_, index) => index)
+    const saved = loadWorkoutProgress(date, workout.dayName)
 
-    const savedProgress = loadWorkoutProgress(today, workout.dayName)
-
-    if (savedProgress) {
-      setStartedAt(savedProgress.startedAt ?? Date.now())
-      setStep(savedProgress.step ?? 0)
-      setExerciseOrder(
-        Array.isArray(savedProgress.exerciseOrder) && savedProgress.exerciseOrder.length
-          ? savedProgress.exerciseOrder
-          : defaultOrder
-      )
-      setEntries(
-        Array.isArray(savedProgress.entries) && savedProgress.entries.length
-          ? savedProgress.entries
-          : defaultEntries
-      )
-      setCompletedCardio(Boolean(savedProgress.completedCardio))
-    } else {
-      setStartedAt(Date.now())
-      setStep(0)
-      setExerciseOrder(defaultOrder)
-      setEntries(defaultEntries)
-      setCompletedCardio(false)
+    if (saved) {
+      setStartedAt(saved.startedAt)
+      setEntries(saved.entries)
+      setCurrentIndex(saved.currentIndex)
+      setCompletedCardio(saved.completedCardio)
+      setSkippedIndices(saved.skippedIndices)
+      setCompletedIndices(saved.completedIndices)
     }
 
-    setHydrated(true)
-  }, [today, workout.dayName])
+    setIsLoaded(true)
+  }, [date, workout.dayName])
 
   useEffect(() => {
-    if (!hydrated || saved) return
+    if (!isLoaded) return
 
-    saveWorkoutProgress(today, workout.dayName, {
+    const progress: WorkoutProgressState = {
+      date,
+      dayName: workout.dayName,
       startedAt,
-      step,
-      exerciseOrder,
-      entries,
+      currentIndex,
       completedCardio,
-    })
-  }, [hydrated, saved, today, workout.dayName, startedAt, step, exerciseOrder, entries, completedCardio])
+      skippedIndices,
+      completedIndices,
+      entries,
+    }
 
-  useEffect(() => {
+    saveWorkoutProgress(progress)
+  }, [
+    isLoaded,
+    date,
+    workout.dayName,
+    startedAt,
+    currentIndex,
+    completedCardio,
+    skippedIndices,
+    completedIndices,
+    entries,
+  ])
+
+  const currentEntry = entries[currentIndex]
+  const currentTarget = currentEntry ? getTargetForExercise(currentEntry.name) : null
+
+  const nextPendingIndex = useMemo(() => {
+    return getNextPendingIndex(currentIndex, entries.length, completedIndices)
+  }, [currentIndex, entries.length, completedIndices])
+
+  const nextLabel =
+    nextPendingIndex >= 0 && entries[nextPendingIndex]
+      ? entries[nextPendingIndex].name
+      : completedIndices.length === entries.length
+      ? 'Cardio / Finish'
+      : '—'
+
+  const elapsedMinutes = useMemo(() => {
+    const start = new Date(startedAt).getTime()
+    const now = Date.now()
+    return Math.max(1, Math.round((now - start) / 60000))
+  }, [startedAt])
+
+  const substitutionOptions = currentEntry
+    ? getExerciseSubstitutions(currentEntry.name).filter((option) => option !== currentEntry.name)
+    : []
+
+  function updateSetValue(setIndex: number, field: 'weight' | 'reps', value: string) {
+    setEntries((prev) =>
+      prev.map((entry, index) =>
+        index === currentIndex
+          ? {
+              ...entry,
+              sets: entry.sets.map((set, i) =>
+                i === setIndex ? { ...set, [field]: value } : set
+              ),
+            }
+          : entry
+      )
+    )
+  }
+
+  function updateCurrentField(
+    field: 'difficulty' | 'discomfort' | 'note',
+    value: string
+  ) {
+    setEntries((prev) =>
+      prev.map((entry, index) =>
+        index === currentIndex ? { ...entry, [field]: value } : entry
+      )
+    )
+  }
+
+  function handleSkip() {
+    setSkippedIndices((prev) =>
+      prev.includes(currentIndex) ? prev : [...prev, currentIndex]
+    )
+
+    const nextIndex = getNextPendingIndex(currentIndex, entries.length, completedIndices)
+    if (nextIndex >= 0 && nextIndex !== currentIndex) {
+      setCurrentIndex(nextIndex)
+    }
+
+    setShowSubstitutions(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [step])
-
-  const currentExerciseIndex =
-    step > 0 && step <= totalExercises ? exerciseOrder[step - 1] : null
-
-  const currentExerciseName =
-    currentExerciseIndex != null ? workout.exercises[currentExerciseIndex] : ''
-
-  const nextExerciseName =
-    step > 0 && step < totalExercises
-      ? workout.exercises[exerciseOrder[step]]
-      : step === totalExercises
-      ? 'Cardio'
-      : totalExercises > 0
-      ? workout.exercises[exerciseOrder[0]]
-      : ''
-
-  function updateSet(
-    exerciseIndex: number,
-    setIndex: number,
-    field: 'weight' | 'reps',
-    value: string
-  ) {
-    setEntries((prev) => {
-      const copy = [...prev]
-      const exercise = { ...copy[exerciseIndex] }
-      const sets = [...exercise.sets]
-      sets[setIndex] = { ...sets[setIndex], [field]: value }
-      exercise.sets = sets
-      copy[exerciseIndex] = exercise
-      return copy
-    })
   }
 
-  function updateExerciseField(
-    exerciseIndex: number,
-    field: 'difficulty' | 'discomfort' | 'notes',
-    value: string
-  ) {
-    setEntries((prev) => {
-      const copy = [...prev]
-      copy[exerciseIndex] = { ...copy[exerciseIndex], [field]: value }
-      return copy
-    })
+  function handleSubstitute(newExerciseName: string) {
+    setEntries((prev) =>
+      prev.map((entry, index) =>
+        index === currentIndex
+          ? {
+              ...entry,
+              substitutedFrom:
+                entry.substitutedFrom ?? entry.name,
+              name: newExerciseName,
+            }
+          : entry
+      )
+    )
+
+    setShowSubstitutions(false)
   }
 
-  function handleSkipForNow() {
-    if (currentExerciseIndex == null) return
+  function handleNext() {
+    setCompletedIndices((prev) =>
+      prev.includes(currentIndex) ? prev : [...prev, currentIndex]
+    )
+    setSkippedIndices((prev) => prev.filter((idx) => idx !== currentIndex))
 
-    const currentPosition = step - 1
+    const nextIndex = getNextPendingIndex(
+      currentIndex,
+      entries.length,
+      completedIndices.includes(currentIndex)
+        ? completedIndices
+        : [...completedIndices, currentIndex]
+    )
 
-    setExerciseOrder((prev) => {
-      const copy = [...prev]
-      const [skipped] = copy.splice(currentPosition, 1)
-      copy.push(skipped)
-      return copy
-    })
+    if (nextIndex >= 0) {
+      setCurrentIndex(nextIndex)
+      setShowSubstitutions(false)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  async function finishWorkout() {
+  async function handleFinishWorkout() {
     try {
       setSaving(true)
       setError('')
 
-      const actualMinutes = Math.max(1, Math.round((Date.now() - startedAt) / 60000))
-
       const exerciseLogs = entries.flatMap((entry, exerciseIndex) =>
-        entry.sets.map((setRow, setIndex) => ({
-          exercise_name: workout.exercises[exerciseIndex],
+        entry.sets.map((set, setIndex) => ({
+          exercise_name: entry.name,
           exercise_index: exerciseIndex,
           set_number: setIndex + 1,
-          weight: setRow.weight ? Number(setRow.weight) : null,
-          reps: setRow.reps ? Number(setRow.reps) : null,
-          difficulty: entry.difficulty || null,
-          discomfort: entry.discomfort || null,
-          notes: entry.notes || null,
+          weight: set.weight ? Number(set.weight) : null,
+          reps: set.reps ? Number(set.reps) : null,
+          difficulty: setIndex === entry.sets.length - 1 ? entry.difficulty || null : null,
+          discomfort: setIndex === entry.sets.length - 1 ? entry.discomfort || null : null,
+          notes:
+            setIndex === entry.sets.length - 1
+              ? entry.substitutedFrom
+                ? `Substituted from ${entry.substitutedFrom}${entry.note ? ` • ${entry.note}` : ''}`
+                : entry.note || null
+              : null,
         }))
       )
 
       await saveWorkoutAndLogsToSupabase({
-        date: today,
+        date,
         day_name: workout.dayName,
         focus: workout.focus,
-        estimated_minutes: null,
-        actual_minutes: actualMinutes,
+        estimated_minutes: parseInt(workout.estimatedMinutes, 10) || null,
+        actual_minutes: elapsedMinutes,
         warmup_text: workout.warmup,
         cardio_text: workout.cardio,
         completed_cardio: completedCardio,
-        exercise_order: exerciseOrder.map((index) => workout.exercises[index]),
+        exercise_order: entries.map((entry) => entry.name),
         exercise_logs: exerciseLogs,
       })
 
-      clearWorkoutProgress(today, workout.dayName)
-      setSaved(true)
+      clearWorkoutProgress(date, workout.dayName)
+      router.push('/workout')
     } catch (err) {
       console.error(err)
       setError('Could not save workout. Please try again.')
@@ -191,280 +262,261 @@ export default function WorkoutLogPage() {
     }
   }
 
-  if (workout.restDay) {
-    return (
-      <div className="space-y-6 pb-6">
-        <div>
-          <div className="label">Workout</div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {workout.dayName}: {workout.focus}
-          </h1>
-          <p className="mt-2 text-slate-300">{workout.estimatedMinutes}</p>
-        </div>
-
-        <section className="card space-y-4">
-          <div className="label">Today</div>
-          <p className="text-slate-100">
-            This is a recovery / mobility day. No structured lifting log is required.
-          </p>
-        </section>
-
-        <Link
-          href="/progress"
-          className="block w-full rounded-[1.75rem] bg-white px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100"
-        >
-          View Progress
-        </Link>
-      </div>
-    )
-  }
-
-  const progressItems = ['Warmup', ...workout.exercises.map((_, i) => `${i + 1}`), 'Cardio']
+  const allExercisesCompleted = completedIndices.length === entries.length
 
   return (
     <div className="space-y-6 pb-6">
-      <div className="sticky top-0 z-20 -mx-4 border-b border-slate-800 bg-slate-950/95 px-4 pb-3 pt-2 backdrop-blur">
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-300">
-          {progressItems.map((item, index) => {
-            const active = index === step
+      <div>
+        <div className="label">Workout Log</div>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {workout.dayName}: {workout.focus}
+        </h1>
+        <p className="mt-2 text-slate-300">{workout.estimatedMinutes}</p>
+      </div>
+
+      <section className="card space-y-4">
+        <div className="label">Progress</div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-200">
+            Warmup
+          </div>
+
+          {entries.map((entry, index) => {
+            const isCurrent = currentIndex === index
+            const isCompleted = completedIndices.includes(index)
+            const isSkipped = skippedIndices.includes(index) && !isCompleted
+
             return (
-              <div
-                key={item}
-                className={`rounded-full px-3 py-1 ${
-                  active ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'
-                }`}
-              >
-                {item}
+              <div key={`${entry.name}-${index}`} className="relative">
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold ${
+                    isCompleted
+                      ? 'bg-emerald-500 text-slate-950'
+                      : isCurrent
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-slate-800 text-slate-300'
+                  }`}
+                >
+                  {isCompleted ? '✓' : index + 1}
+                </div>
+
+                {isSkipped ? (
+                  <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-slate-950">
+                    ↺
+                  </div>
+                ) : null}
               </div>
             )
           })}
+
+          <div className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-200">
+            Cardio
+          </div>
         </div>
 
-        {step === 0 ? (
-          <div className="mt-3 space-y-1">
-            <div className="text-lg font-semibold text-white">Warmup</div>
-            <div className="text-sm text-slate-400">Next: {nextExerciseName}</div>
+        <div className="grid grid-cols-2 gap-4 pt-2">
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="label">Target</div>
+            <div className="mt-2 text-[1.1rem] font-semibold text-white">
+              {currentTarget ? `${currentTarget.sets} × ${currentTarget.reps}` : '—'}
+            </div>
           </div>
-        ) : step > 0 && step <= totalExercises ? (
-          <div className="mt-3 space-y-1">
-<div className="flex items-center gap-3">
-  <div className="text-lg font-semibold text-white">
-    {currentExerciseName}
-  </div>
 
-  <div className="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
-    {getTargetForExercise(currentExerciseName).sets} × {getTargetForExercise(currentExerciseName).reps}
-  </div>
-</div>
-            <div className="text-sm text-slate-400">Next: {nextExerciseName}</div>
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="label">Next</div>
+            <div className="mt-2 text-[1.1rem] font-semibold text-white">
+              {nextLabel}
+            </div>
           </div>
-        ) : (
-          <div className="mt-3 space-y-1">
-            <div className="text-lg font-semibold text-white">Cardio</div>
-            <div className="text-sm text-slate-400">Finish workout when done</div>
-          </div>
-        )}
-      </div>
+        </div>
+      </section>
 
-      {step === 0 && (
+      {!allExercisesCompleted ? (
         <section className="card space-y-4">
-          <div className="label">Warmup</div>
-          <p className="text-slate-100">{workout.warmup}</p>
+          <div className="label">Current Exercise</div>
 
-          <button
-            onClick={() => setStep(1)}
-            className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
-          >
-            Start first exercise
-          </button>
-        </section>
-      )}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[1.9rem] font-semibold leading-tight text-white">
+                {currentEntry?.name}
+              </h2>
+              {currentEntry?.substitutedFrom ? (
+                <p className="mt-2 text-sm text-amber-300">
+                  Substituted from {currentEntry.substitutedFrom}
+                </p>
+              ) : null}
+            </div>
 
-      {step > 0 && step <= totalExercises && currentExerciseIndex != null && (
-        <section className="card space-y-4">
-          <div className="space-y-4">
-            {entries[currentExerciseIndex].sets.map((setRow, setIndex) => (
+            <button
+              type="button"
+              onClick={() => setShowSubstitutions((prev) => !prev)}
+              className="rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-slate-100 hover:bg-slate-700"
+            >
+              Substitute
+            </button>
+          </div>
+
+          {showSubstitutions ? (
+            <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+              <div className="label">Substitute Exercise</div>
+              <div className="mt-3 space-y-2">
+                {substitutionOptions.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => handleSubstitute(option)}
+                    className="block w-full rounded-xl bg-slate-800 px-4 py-3 text-left text-sm font-semibold text-slate-100 hover:bg-slate-700"
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="space-y-3">
+            {currentEntry?.sets.map((set, setIndex) => (
               <div
                 key={setIndex}
-                className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4 space-y-3"
+                className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4"
               >
                 <div className="label">Set {setIndex + 1}</div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="label mb-2">Weight</div>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={setRow.weight}
-                      onChange={(e) =>
-                        updateSet(currentExerciseIndex, setIndex, 'weight', e.target.value)
-                      }
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none"
-                      placeholder="e.g. 7.5"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="label mb-2">Reps</div>
-                    <input
-                      type="number"
-                      value={setRow.reps}
-                      onChange={(e) =>
-                        updateSet(currentExerciseIndex, setIndex, 'reps', e.target.value)
-                      }
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none"
-                      placeholder={`Target ${getTargetForExercise(currentExerciseName).reps}`}
-                    />
-                  </div>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <input
+                    value={set.weight}
+                    onChange={(e) => updateSetValue(setIndex, 'weight', e.target.value)}
+                    className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none"
+                    placeholder="Weight"
+                  />
+                  <input
+                    value={set.reps}
+                    onChange={(e) => updateSetValue(setIndex, 'reps', e.target.value)}
+                    className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none"
+                    placeholder="Reps"
+                  />
                 </div>
               </div>
             ))}
           </div>
 
-          <div>
-            <div className="label mb-2">Difficulty</div>
-            <div className="flex flex-wrap gap-2">
-              {difficultyOptions.map((option) => {
-                const active = entries[currentExerciseIndex].difficulty === option
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => updateExerciseField(currentExerciseIndex, 'difficulty', option)}
-                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                      active
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    }`}
-                  >
-                    {option}
-                  </button>
-                )
-              })}
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="label">How did your final set feel?</div>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              {['Easy', 'Good', 'Hard', 'Too Hard'].map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => updateCurrentField('difficulty', option)}
+                  className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                    currentEntry?.difficulty === option
+                      ? 'bg-emerald-500 text-slate-950'
+                      : 'bg-slate-800 text-slate-200'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div>
-            <div className="label mb-2">Discomfort</div>
-            <div className="flex flex-wrap gap-2">
-              {discomfortOptions.map((option) => {
-                const active = entries[currentExerciseIndex].discomfort === option
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => updateExerciseField(currentExerciseIndex, 'discomfort', option)}
-                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                      active
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    }`}
-                  >
-                    {option}
-                  </button>
-                )
-              })}
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="label">Discomfort</div>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              {['None', 'Low', 'Medium', 'High'].map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => updateCurrentField('discomfort', option)}
+                  className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                    currentEntry?.discomfort === option
+                      ? 'bg-emerald-500 text-slate-950'
+                      : 'bg-slate-800 text-slate-200'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
             </div>
           </div>
 
           <div>
             <div className="label mb-2">Notes (optional)</div>
             <textarea
-              value={entries[currentExerciseIndex].notes}
-              onChange={(e) =>
-                updateExerciseField(currentExerciseIndex, 'notes', e.target.value)
-              }
-              className="min-h-[100px] w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none"
+              value={currentEntry?.note ?? ''}
+              onChange={(e) => updateCurrentField('note', e.target.value)}
+              className="min-h-[90px] w-full rounded-2xl border border-slate-700 bg-slate-900/40 px-4 py-3 text-white outline-none"
               placeholder="Optional notes"
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <button
-              onClick={() => setStep((prev) => Math.max(0, prev - 1))}
-              className="block w-full rounded-[1.5rem] bg-white px-4 py-4 text-center text-[0.95rem] font-semibold text-slate-900 transition hover:bg-slate-100"
-            >
-              Back
-            </button>
-
-            <button
-              onClick={handleSkipForNow}
-              className="block w-full rounded-[1.5rem] bg-slate-800 px-4 py-4 text-center text-[0.95rem] font-semibold text-slate-100 transition hover:bg-slate-700"
+              type="button"
+              onClick={handleSkip}
+              className="rounded-[1.75rem] bg-white px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100"
             >
               Skip for now
             </button>
 
             <button
-              onClick={() =>
-                setStep((prev) => (prev < totalExercises ? prev + 1 : cardioStep))
-              }
-              className="block w-full rounded-[1.5rem] bg-emerald-500 px-4 py-4 text-center text-[0.95rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
+              type="button"
+              onClick={handleNext}
+              className="rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
             >
-              {step === totalExercises ? 'Go to cardio' : 'Next'}
+              Next Exercise
             </button>
           </div>
         </section>
-      )}
-
-      {step === cardioStep && !saved && (
+      ) : (
         <section className="card space-y-4">
-          <div className="label">Cardio</div>
-          <p className="text-slate-100">{workout.cardio}</p>
+          <div className="label">Finish Workout</div>
 
-          <label className="flex items-center gap-3 text-slate-100">
-            <input
-              type="checkbox"
-              checked={completedCardio}
-              onChange={(e) => setCompletedCardio(e.target.checked)}
-            />
-            Cardio completed
-          </label>
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="label">Elapsed</div>
+            <div className="mt-2 text-[1.8rem] font-semibold text-white">
+              {elapsedMinutes} min
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="label">Cardio</div>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setCompletedCardio(true)}
+                className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                  completedCardio
+                    ? 'bg-emerald-500 text-slate-950'
+                    : 'bg-slate-800 text-slate-200'
+                }`}
+              >
+                Completed
+              </button>
+              <button
+                type="button"
+                onClick={() => setCompletedCardio(false)}
+                className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                  !completedCardio
+                    ? 'bg-emerald-500 text-slate-950'
+                    : 'bg-slate-800 text-slate-200'
+                }`}
+              >
+                Skipped
+              </button>
+            </div>
+          </div>
 
           {error ? <p className="text-red-400">{error}</p> : null}
 
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => setStep(totalExercises)}
-              className="block w-full rounded-[1.75rem] bg-white px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100"
-            >
-              Back
-            </button>
-
-            <button
-              onClick={finishWorkout}
-              disabled={saving}
-              className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400 disabled:opacity-60"
-            >
-              {saving ? 'Saving…' : 'Finish workout'}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {saved && (
-        <section className="card space-y-4">
-          <div className="label">Workout saved</div>
-          <h2 className="text-2xl font-semibold text-white">Nice work.</h2>
-          <p className="text-slate-300">
-            Your workout was saved to Supabase.
-          </p>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Link
-              href="/progress"
-              className="block w-full rounded-[1.75rem] bg-white px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100"
-            >
-              View Progress
-            </Link>
-
-            <Link
-              href="/"
-              className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
-            >
-              Back Home
-            </Link>
-          </div>
+          <button
+            type="button"
+            onClick={handleFinishWorkout}
+            disabled={saving}
+            className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400 disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Finish Workout'}
+          </button>
         </section>
       )}
     </div>
