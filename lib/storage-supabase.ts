@@ -27,6 +27,36 @@ export type CompletedSessionRow = {
   created_at?: string
 }
 
+export type WorkoutRow = {
+  id: string
+  user_id?: string
+  date: string
+  day_name?: string | null
+  focus?: string | null
+  status?: string | null
+  estimated_minutes?: number | null
+  actual_minutes?: number | null
+  warmup_text?: string | null
+  cardio_json?: { text?: string } | null
+  exercise_order?: string[] | null
+  workout_json?: Record<string, unknown> | null
+  created_at?: string
+}
+
+export type ExerciseLogRow = {
+  id?: string
+  workout_id: string
+  exercise_name: string
+  exercise_index?: number | null
+  set_number: number
+  weight?: number | null
+  reps?: number | null
+  difficulty?: string | null
+  discomfort?: string | null
+  notes?: string | null
+  created_at?: string
+}
+
 export function getLocalDateString(date = new Date()) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -61,7 +91,7 @@ export function getTomorrowWorkoutLabel() {
 
 export function getWeekStartDate() {
   const now = new Date()
-  const day = now.getDay() // 0=Sun, 1=Mon, ...
+  const day = now.getDay()
   const mondayOffset = day === 0 ? -6 : 1 - day
   const monday = new Date(now)
   monday.setDate(now.getDate() + mondayOffset)
@@ -267,5 +297,47 @@ export async function saveWeeklyBasketball(weekStart: string, status: string) {
 
   if (error) {
     console.error('weekly basketball save error', error)
+  }
+}
+
+export async function loadWorkoutHistoryBundleFromSupabase(): Promise<{
+  workouts: WorkoutRow[]
+  logs: ExerciseLogRow[]
+}> {
+  const { data: workoutsData, error: workoutsError } = await supabase
+    .from('workouts')
+    .select('*')
+    .eq('user_id', DEFAULT_USER_ID)
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(30)
+
+  if (workoutsError) {
+    console.error('Workout history load error:', workoutsError)
+    return { workouts: [], logs: [] }
+  }
+
+  const workouts = (workoutsData ?? []) as WorkoutRow[]
+  const workoutIds = workouts.map((w) => w.id).filter(Boolean)
+
+  if (!workoutIds.length) {
+    return { workouts, logs: [] }
+  }
+
+  const { data: logsData, error: logsError } = await supabase
+    .from('exercise_logs')
+    .select('*')
+    .in('workout_id', workoutIds)
+    .order('exercise_index', { ascending: true })
+    .order('set_number', { ascending: true })
+
+  if (logsError) {
+    console.error('Exercise log history load error:', logsError)
+    return { workouts, logs: [] }
+  }
+
+  return {
+    workouts,
+    logs: (logsData ?? []) as ExerciseLogRow[],
   }
 }

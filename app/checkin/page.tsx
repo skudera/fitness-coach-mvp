@@ -1,8 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { saveBodyMetricToSupabase } from '../../lib/storage-supabase'
+import {
+  saveBodyMetricToSupabase,
+  saveWeeklyBasketball,
+  getWeekStartDate,
+  getWeeklySettings,
+} from '@/lib/storage-supabase'
 
 export default function CheckInPage() {
   const router = useRouter()
@@ -15,10 +20,27 @@ export default function CheckInPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [basketball, setBasketball] = useState('unsure')
+  const [loadingWeekly, setLoadingWeekly] = useState(true)
 
-  async function handleSave() {
-    setSaving(True => true)
-  }
+  useEffect(() => {
+    async function loadWeeklySetting() {
+      try {
+        const weekStart = getWeekStartDate()
+        const weekly = await getWeeklySettings(weekStart)
+
+        if (weekly?.basketball_status) {
+          setBasketball(weekly.basketball_status)
+        }
+      } catch (err) {
+        console.error('Could not load weekly settings', err)
+      } finally {
+        setLoadingWeekly(false)
+      }
+    }
+
+    loadWeeklySetting()
+  }, [])
 
   async function onSave() {
     try {
@@ -37,10 +59,13 @@ export default function CheckInPage() {
         notes: notes || null,
       })
 
+      const weekStart = getWeekStartDate()
+      await saveWeeklyBasketball(weekStart, basketball)
+
       setSaved(true)
 
       setTimeout(() => {
-        router.push('/progress')
+        router.push('/')
       }, 700)
     } catch (err) {
       console.error(err)
@@ -56,7 +81,7 @@ export default function CheckInPage() {
         <div className="label">Monday check-in</div>
         <h1 className="text-2xl font-semibold tracking-tight">Update this week’s plan</h1>
         <p className="mt-2 text-slate-300">
-          Save your latest body metrics to Supabase.
+          Save your latest body metrics and weekly basketball plan.
         </p>
       </div>
 
@@ -98,7 +123,7 @@ export default function CheckInPage() {
               value={waist}
               onChange={(e) => setWaist(e.target.value)}
               className="w-full rounded-2xl border border-slate-700 bg-slate-900/40 px-4 py-3 text-white outline-none"
-              placeholder='38.5'
+              placeholder="38.5"
             />
           </div>
         </div>
@@ -113,8 +138,34 @@ export default function CheckInPage() {
           />
         </div>
 
+        <div>
+          <div className="label mb-2">Basketball This Week</div>
+
+          <div className="flex gap-3">
+            {['yes', 'no', 'unsure'].map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setBasketball(option)}
+                disabled={loadingWeekly}
+                className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                  basketball === option
+                    ? 'bg-emerald-500 text-slate-900'
+                    : 'bg-slate-800 text-slate-200'
+                } ${loadingWeekly ? 'opacity-60' : ''}`}
+              >
+                {option.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          <p className="mt-2 text-sm text-slate-400">
+            You can update this later in the week if your plans change.
+          </p>
+        </div>
+
         {error ? <p className="text-red-400">{error}</p> : null}
-        {saved ? <p className="text-green-400">Saved. Redirecting to Progress…</p> : null}
+        {saved ? <p className="text-green-400">Saved. Redirecting home…</p> : null}
 
         <button
           onClick={onSave}
