@@ -13,9 +13,7 @@ export type ExerciseTarget = {
   reps: string
 }
 
-export function getWorkoutForToday(): WorkoutDefinition {
-  const day = new Date().getDay()
-
+export function getWorkoutForDay(day: number): WorkoutDefinition {
   switch (day) {
     case 0:
       return {
@@ -139,6 +137,17 @@ export function getWorkoutForToday(): WorkoutDefinition {
         restDay: false,
       }
   }
+}
+
+export function getWorkoutForToday(): WorkoutDefinition {
+  return getWorkoutForDay(new Date().getDay())
+}
+
+export function getWeekPlan() {
+  return [1, 2, 3, 4, 5].map((day) => ({
+    day,
+    workout: getWorkoutForDay(day),
+  }))
 }
 
 export function getTargetForExercise(exerciseName: string): ExerciseTarget {
