@@ -181,6 +181,8 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
   focus: string
   estimated_minutes?: number | null
   actual_minutes?: number | null
+  strength_minutes?: number | null
+  cardio_minutes?: number | null
   warmup_text?: string | null
   cardio_text?: string | null
   completed_cardio?: boolean
@@ -204,6 +206,9 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
         workout_json: {
           focus: payload.focus,
           completed_cardio: payload.completed_cardio ?? false,
+          strength_minutes: payload.strength_minutes ?? null,
+          cardio_minutes: payload.cardio_minutes ?? null,
+          total_minutes: payload.actual_minutes ?? null,
         },
       },
     ])

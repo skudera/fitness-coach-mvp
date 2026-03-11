@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getWorkoutForToday,
@@ -30,7 +30,8 @@ function buildInitialEntries(exercises: string[]): WorkoutExerciseEntry[] {
     substitutedFrom: null,
     sets: createBlankSets(),
     difficulty: '',
-    discomfort: '',
+    discomfortLocation: 'None',
+    discomfortSeverity: '',
     note: '',
   }))
 }
@@ -51,6 +52,15 @@ function getNextPendingIndex(
   return -1
 }
 
+function parseFirstNumber(value: string) {
+  const match = value.match(/\d+/)
+  return match ? Number(match[0]) : 0
+}
+
+const difficultyOptions = ['Easy', 'Good', 'Hard', 'Too Hard']
+const discomfortLocationOptions = ['None', 'Shoulder', 'Back', 'Other']
+const discomfortSeverityOptions = ['Low', 'Medium', 'High']
+
 export default function WorkoutLogPage() {
   const router = useRouter()
   const workout = useMemo(() => getWorkoutForToday(), [])
@@ -60,14 +70,18 @@ export default function WorkoutLogPage() {
   const [entries, setEntries] = useState<WorkoutExerciseEntry[]>(() =>
     buildInitialEntries(workout.exercises)
   )
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(-1)
   const [completedCardio, setCompletedCardio] = useState(false)
+  const [cardioMinutes, setCardioMinutes] = useState('')
   const [skippedIndices, setSkippedIndices] = useState<number[]>([])
   const [completedIndices, setCompletedIndices] = useState<number[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showSubstitutions, setShowSubstitutions] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [skipLock, setSkipLock] = useState(false)
+
+  const scrollAnchorRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const saved = loadWorkoutProgress(date, workout.dayName)
@@ -75,8 +89,9 @@ export default function WorkoutLogPage() {
     if (saved) {
       setStartedAt(saved.startedAt)
       setEntries(saved.entries)
-      setCurrentIndex(saved.currentIndex)
+      setCurrentIndex(typeof saved.currentIndex === 'number' ? saved.currentIndex : -1)
       setCompletedCardio(saved.completedCardio)
+      setCardioMinutes(saved.cardioMinutes ?? '')
       setSkippedIndices(saved.skippedIndices)
       setCompletedIndices(saved.completedIndices)
     }
@@ -93,6 +108,7 @@ export default function WorkoutLogPage() {
       startedAt,
       currentIndex,
       completedCardio,
+      cardioMinutes,
       skippedIndices,
       completedIndices,
       entries,
@@ -106,12 +122,23 @@ export default function WorkoutLogPage() {
     startedAt,
     currentIndex,
     completedCardio,
+    cardioMinutes,
     skippedIndices,
     completedIndices,
     entries,
   ])
 
-  const currentEntry = entries[currentIndex]
+  useEffect(() => {
+    if (!isLoaded) return
+
+    const id = window.setTimeout(() => {
+      scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 40)
+
+    return () => window.clearTimeout(id)
+  }, [currentIndex, isLoaded, showSubstitutions])
+
+  const currentEntry = currentIndex >= 0 ? entries[currentIndex] : null
   const currentTarget = currentEntry ? getTargetForExercise(currentEntry.name) : null
 
   const nextPendingIndex = useMemo(() => {
@@ -125,17 +152,41 @@ export default function WorkoutLogPage() {
       ? 'Cardio / Finish'
       : '—'
 
-  const elapsedMinutes = useMemo(() => {
+  const strengthElapsedMinutes = useMemo(() => {
     const start = new Date(startedAt).getTime()
     const now = Date.now()
     return Math.max(1, Math.round((now - start) / 60000))
   }, [startedAt])
+
+  const plannedCardioMinutes = useMemo(() => {
+    return parseFirstNumber(workout.cardio)
+  }, [workout.cardio])
+
+  const targetSessionMinutes = useMemo(() => {
+    return parseFirstNumber(workout.estimatedMinutes)
+  }, [workout.estimatedMinutes])
+
+  const suggestedCardioMinutes = useMemo(() => {
+    if (!targetSessionMinutes) return plannedCardioMinutes || 0
+
+    const remaining = Math.max(0, targetSessionMinutes - strengthElapsedMinutes)
+    if (!plannedCardioMinutes) return Math.min(remaining, 20)
+
+    return Math.min(Math.max(plannedCardioMinutes, remaining), 20)
+  }, [targetSessionMinutes, strengthElapsedMinutes, plannedCardioMinutes])
+
+  const actualCardioMinutesNumber =
+    completedCardio && cardioMinutes ? Number(cardioMinutes) : 0
+
+  const totalProjectedMinutes = strengthElapsedMinutes + actualCardioMinutesNumber
 
   const substitutionOptions = currentEntry
     ? getExerciseSubstitutions(currentEntry.name).filter((option) => option !== currentEntry.name)
     : []
 
   function updateSetValue(setIndex: number, field: 'weight' | 'reps', value: string) {
+    if (currentIndex < 0) return
+
     setEntries((prev) =>
       prev.map((entry, index) =>
         index === currentIndex
@@ -151,9 +202,11 @@ export default function WorkoutLogPage() {
   }
 
   function updateCurrentField(
-    field: 'difficulty' | 'discomfort' | 'note',
+    field: 'difficulty' | 'discomfortLocation' | 'discomfortSeverity' | 'note',
     value: string
   ) {
+    if (currentIndex < 0) return
+
     setEntries((prev) =>
       prev.map((entry, index) =>
         index === currentIndex ? { ...entry, [field]: value } : entry
@@ -161,28 +214,42 @@ export default function WorkoutLogPage() {
     )
   }
 
+  function handleStartExercises() {
+    setCurrentIndex(0)
+    setShowSubstitutions(false)
+  }
+
   function handleSkip() {
+    if (currentIndex < 0 || skipLock) return
+
+    setSkipLock(true)
+
     setSkippedIndices((prev) =>
       prev.includes(currentIndex) ? prev : [...prev, currentIndex]
     )
 
     const nextIndex = getNextPendingIndex(currentIndex, entries.length, completedIndices)
+
     if (nextIndex >= 0 && nextIndex !== currentIndex) {
       setCurrentIndex(nextIndex)
     }
 
     setShowSubstitutions(false)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+
+    window.setTimeout(() => {
+      setSkipLock(false)
+    }, 300)
   }
 
   function handleSubstitute(newExerciseName: string) {
+    if (currentIndex < 0) return
+
     setEntries((prev) =>
       prev.map((entry, index) =>
         index === currentIndex
           ? {
               ...entry,
-              substitutedFrom:
-                entry.substitutedFrom ?? entry.name,
+              substitutedFrom: entry.substitutedFrom ?? entry.name,
               name: newExerciseName,
             }
           : entry
@@ -193,33 +260,33 @@ export default function WorkoutLogPage() {
   }
 
   function handleNext() {
-    setCompletedIndices((prev) =>
-      prev.includes(currentIndex) ? prev : [...prev, currentIndex]
-    )
+    if (currentIndex < 0) return
+
+    const updatedCompleted = completedIndices.includes(currentIndex)
+      ? completedIndices
+      : [...completedIndices, currentIndex]
+
+    setCompletedIndices(updatedCompleted)
     setSkippedIndices((prev) => prev.filter((idx) => idx !== currentIndex))
 
-    const nextIndex = getNextPendingIndex(
-      currentIndex,
-      entries.length,
-      completedIndices.includes(currentIndex)
-        ? completedIndices
-        : [...completedIndices, currentIndex]
-    )
+    const nextIndex = getNextPendingIndex(currentIndex, entries.length, updatedCompleted)
 
     if (nextIndex >= 0) {
       setCurrentIndex(nextIndex)
       setShowSubstitutions(false)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setShowSubstitutions(false)
   }
 
   async function handleFinishWorkout() {
     try {
       setSaving(true)
       setError('')
+
+      const safeCardioMinutes = completedCardio ? Number(cardioMinutes || 0) : 0
+      const totalActualMinutes = strengthElapsedMinutes + safeCardioMinutes
 
       const exerciseLogs = entries.flatMap((entry, exerciseIndex) =>
         entry.sets.map((set, setIndex) => ({
@@ -229,7 +296,12 @@ export default function WorkoutLogPage() {
           weight: set.weight ? Number(set.weight) : null,
           reps: set.reps ? Number(set.reps) : null,
           difficulty: setIndex === entry.sets.length - 1 ? entry.difficulty || null : null,
-          discomfort: setIndex === entry.sets.length - 1 ? entry.discomfort || null : null,
+          discomfort:
+            setIndex === entry.sets.length - 1
+              ? entry.discomfortLocation === 'None'
+                ? null
+                : `${entry.discomfortLocation}${entry.discomfortSeverity ? ` - ${entry.discomfortSeverity}` : ''}`
+              : null,
           notes:
             setIndex === entry.sets.length - 1
               ? entry.substitutedFrom
@@ -244,7 +316,9 @@ export default function WorkoutLogPage() {
         day_name: workout.dayName,
         focus: workout.focus,
         estimated_minutes: parseInt(workout.estimatedMinutes, 10) || null,
-        actual_minutes: elapsedMinutes,
+        actual_minutes: totalActualMinutes,
+        strength_minutes: strengthElapsedMinutes,
+        cardio_minutes: safeCardioMinutes,
         warmup_text: workout.warmup,
         cardio_text: workout.cardio,
         completed_cardio: completedCardio,
@@ -263,22 +337,29 @@ export default function WorkoutLogPage() {
   }
 
   const allExercisesCompleted = completedIndices.length === entries.length
+  const isWarmupStep = currentIndex === -1
 
   return (
-    <div className="space-y-6 pb-6">
+    <div className="space-y-4 pb-6">
+      <div ref={scrollAnchorRef} />
+
       <div>
         <div className="label">Workout Log</div>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight">
           {workout.dayName}: {workout.focus}
         </h1>
-        <p className="mt-2 text-slate-300">{workout.estimatedMinutes}</p>
+        <p className="mt-1 text-sm text-slate-300">{workout.estimatedMinutes}</p>
       </div>
 
-      <section className="card space-y-4">
+      <section className="card space-y-3">
         <div className="label">Progress</div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-200">
+          <div
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              isWarmupStep ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-200'
+            }`}
+          >
             Warmup
           </div>
 
@@ -290,7 +371,7 @@ export default function WorkoutLogPage() {
             return (
               <div key={`${entry.name}-${index}`} className="relative">
                 <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold ${
+                  className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
                     isCompleted
                       ? 'bg-emerald-500 text-slate-950'
                       : isCurrent
@@ -310,63 +391,94 @@ export default function WorkoutLogPage() {
             )
           })}
 
-          <div className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-200">
+          <div
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              allExercisesCompleted ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-200'
+            }`}
+          >
             Cardio
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 pt-2">
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Target</div>
-            <div className="mt-2 text-[1.1rem] font-semibold text-white">
-              {currentTarget ? `${currentTarget.sets} × ${currentTarget.reps}` : '—'}
+        {!isWarmupStep && !allExercisesCompleted && currentEntry && currentTarget ? (
+          <div className="space-y-1 pt-1">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-white">{currentEntry.name}</h2>
+              <div className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300">
+                {currentTarget.sets} × {currentTarget.reps}
+              </div>
             </div>
-          </div>
 
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Next</div>
-            <div className="mt-2 text-[1.1rem] font-semibold text-white">
-              {nextLabel}
+            {currentEntry.substitutedFrom ? (
+              <p className="text-xs text-amber-300">
+                Substituted from {currentEntry.substitutedFrom}
+              </p>
+            ) : null}
+
+            <p className="text-xs text-slate-400">Next: {nextLabel}</p>
+          </div>
+        ) : isWarmupStep ? (
+          <div className="pt-1 text-xs text-slate-400">Warmup is included in tracked time.</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
+              <div className="label">Strength elapsed</div>
+              <div className="mt-1 text-base font-semibold text-white">
+                {strengthElapsedMinutes} min
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
+              <div className="label">Planned cardio</div>
+              <div className="mt-1 text-base font-semibold text-white">
+                {plannedCardioMinutes || 0} min
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </section>
 
-      {!allExercisesCompleted ? (
+      {isWarmupStep ? (
         <section className="card space-y-4">
-          <div className="label">Current Exercise</div>
+          <div className="label">Warmup</div>
+          <h2 className="text-lg font-semibold text-white">{workout.warmup}</h2>
+          <p className="text-sm text-slate-400">
+            Complete your warmup, then begin Exercise 1.
+          </p>
 
+          <button
+            type="button"
+            onClick={handleStartExercises}
+            className="block w-full rounded-[1.5rem] bg-emerald-500 px-5 py-4 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
+          >
+            Start Exercise 1
+          </button>
+        </section>
+      ) : !allExercisesCompleted && currentEntry ? (
+        <section className="card space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-[1.9rem] font-semibold leading-tight text-white">
-                {currentEntry?.name}
-              </h2>
-              {currentEntry?.substitutedFrom ? (
-                <p className="mt-2 text-sm text-amber-300">
-                  Substituted from {currentEntry.substitutedFrom}
-                </p>
-              ) : null}
+            <div className="text-sm text-slate-300">
+              Exercise {currentIndex + 1} of {entries.length}
             </div>
 
             <button
               type="button"
               onClick={() => setShowSubstitutions((prev) => !prev)}
-              className="rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-slate-100 hover:bg-slate-700"
+              className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
             >
               Substitute
             </button>
           </div>
 
           {showSubstitutions ? (
-            <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-3">
               <div className="label">Substitute Exercise</div>
-              <div className="mt-3 space-y-2">
+              <div className="mt-2 space-y-2">
                 {substitutionOptions.map((option) => (
                   <button
                     key={option}
                     type="button"
                     onClick={() => handleSubstitute(option)}
-                    className="block w-full rounded-xl bg-slate-800 px-4 py-3 text-left text-sm font-semibold text-slate-100 hover:bg-slate-700"
+                    className="block w-full rounded-xl bg-slate-800 px-3 py-2 text-left text-sm font-semibold text-slate-100 hover:bg-slate-700"
                   >
                     {option}
                   </button>
@@ -375,41 +487,48 @@ export default function WorkoutLogPage() {
             </div>
           ) : null}
 
-          <div className="space-y-3">
-            {currentEntry?.sets.map((set, setIndex) => (
+          <div className="space-y-2">
+            {currentEntry.sets.map((set, setIndex) => (
               <div
                 key={setIndex}
-                className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4"
+                className="rounded-2xl border border-slate-700 bg-slate-900/40 p-3"
               >
-                <div className="label">Set {setIndex + 1}</div>
-                <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Set {setIndex + 1}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
                   <input
                     value={set.weight}
                     onChange={(e) => updateSetValue(setIndex, 'weight', e.target.value)}
-                    className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none"
+                    inputMode="decimal"
+                    className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-white outline-none"
                     placeholder="Weight"
                   />
+
                   <input
                     value={set.reps}
                     onChange={(e) => updateSetValue(setIndex, 'reps', e.target.value)}
-                    className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none"
-                    placeholder="Reps"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-white outline-none"
+                    placeholder={currentTarget?.reps ?? 'Reps'}
                   />
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">How did your final set feel?</div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              {['Easy', 'Good', 'Hard', 'Too Hard'].map((option) => (
+          <div className="space-y-2">
+            <div className="label">Final Set Difficulty</div>
+            <div className="flex flex-wrap gap-2">
+              {difficultyOptions.map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => updateCurrentField('difficulty', option)}
-                  className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                    currentEntry?.difficulty === option
+                  className={`rounded-full px-3 py-2 text-xs font-semibold ${
+                    currentEntry.difficulty === option
                       ? 'bg-emerald-500 text-slate-950'
                       : 'bg-slate-800 text-slate-200'
                   }`}
@@ -420,16 +539,21 @@ export default function WorkoutLogPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Discomfort</div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              {['None', 'Low', 'Medium', 'High'].map((option) => (
+          <div className="space-y-2">
+            <div className="label">Discomfort Location</div>
+            <div className="flex flex-wrap gap-2">
+              {discomfortLocationOptions.map((option) => (
                 <button
                   key={option}
                   type="button"
-                  onClick={() => updateCurrentField('discomfort', option)}
-                  className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                    currentEntry?.discomfort === option
+                  onClick={() => {
+                    updateCurrentField('discomfortLocation', option)
+                    if (option === 'None') {
+                      updateCurrentField('discomfortSeverity', '')
+                    }
+                  }}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold ${
+                    currentEntry.discomfortLocation === option
                       ? 'bg-emerald-500 text-slate-950'
                       : 'bg-slate-800 text-slate-200'
                   }`}
@@ -439,22 +563,45 @@ export default function WorkoutLogPage() {
               ))}
             </div>
           </div>
+
+          {currentEntry.discomfortLocation !== 'None' ? (
+            <div className="space-y-2">
+              <div className="label">Discomfort Severity</div>
+              <div className="flex flex-wrap gap-2">
+                {discomfortSeverityOptions.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => updateCurrentField('discomfortSeverity', option)}
+                    className={`rounded-full px-3 py-2 text-xs font-semibold ${
+                      currentEntry.discomfortSeverity === option
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'bg-slate-800 text-slate-200'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div>
             <div className="label mb-2">Notes (optional)</div>
             <textarea
-              value={currentEntry?.note ?? ''}
+              value={currentEntry.note}
               onChange={(e) => updateCurrentField('note', e.target.value)}
-              className="min-h-[90px] w-full rounded-2xl border border-slate-700 bg-slate-900/40 px-4 py-3 text-white outline-none"
+              className="min-h-[84px] w-full rounded-2xl border border-slate-700 bg-slate-900/40 px-3 py-3 text-white outline-none"
               placeholder="Optional notes"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={handleSkip}
-              className="rounded-[1.75rem] bg-white px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100"
+              disabled={skipLock}
+              className="rounded-[1.5rem] bg-white px-4 py-4 text-center text-[0.95rem] font-semibold text-slate-900 transition hover:bg-slate-100 disabled:opacity-60"
             >
               Skip for now
             </button>
@@ -462,7 +609,7 @@ export default function WorkoutLogPage() {
             <button
               type="button"
               onClick={handleNext}
-              className="rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
+              className="rounded-[1.5rem] bg-emerald-500 px-4 py-4 text-center text-[0.95rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
             >
               Next Exercise
             </button>
@@ -470,22 +617,36 @@ export default function WorkoutLogPage() {
         </section>
       ) : (
         <section className="card space-y-4">
-          <div className="label">Finish Workout</div>
+          <div className="label">Cardio & Finish</div>
 
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Elapsed</div>
-            <div className="mt-2 text-[1.8rem] font-semibold text-white">
-              {elapsedMinutes} min
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+              <div className="label">Strength elapsed</div>
+              <div className="mt-2 text-[1.4rem] font-semibold text-white">
+                {strengthElapsedMinutes} min
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+              <div className="label">Suggested cardio</div>
+              <div className="mt-2 text-[1.4rem] font-semibold text-white">
+                {suggestedCardioMinutes} min
+              </div>
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Cardio</div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="label">Cardio Status</div>
+            <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setCompletedCardio(true)}
-                className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                onClick={() => {
+                  setCompletedCardio(true)
+                  if (!cardioMinutes && suggestedCardioMinutes) {
+                    setCardioMinutes(String(suggestedCardioMinutes))
+                  }
+                }}
+                className={`rounded-full px-3 py-2 text-xs font-semibold ${
                   completedCardio
                     ? 'bg-emerald-500 text-slate-950'
                     : 'bg-slate-800 text-slate-200'
@@ -495,8 +656,11 @@ export default function WorkoutLogPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setCompletedCardio(false)}
-                className={`rounded-xl px-4 py-3 text-sm font-semibold ${
+                onClick={() => {
+                  setCompletedCardio(false)
+                  setCardioMinutes('0')
+                }}
+                className={`rounded-full px-3 py-2 text-xs font-semibold ${
                   !completedCardio
                     ? 'bg-emerald-500 text-slate-950'
                     : 'bg-slate-800 text-slate-200'
@@ -505,6 +669,30 @@ export default function WorkoutLogPage() {
                 Skipped
               </button>
             </div>
+
+            {completedCardio ? (
+              <div className="mt-4">
+                <div className="label mb-2">Actual Cardio Minutes</div>
+                <input
+                  value={cardioMinutes}
+                  onChange={(e) => setCardioMinutes(e.target.value)}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-white outline-none"
+                  placeholder={String(suggestedCardioMinutes || plannedCardioMinutes || 0)}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="label">Projected Total Duration</div>
+            <div className="mt-2 text-[1.4rem] font-semibold text-white">
+              {totalProjectedMinutes} min
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Strength and cardio are tracked separately so future workout-length logic can stay accurate.
+            </p>
           </div>
 
           {error ? <p className="text-red-400">{error}</p> : null}
@@ -513,7 +701,7 @@ export default function WorkoutLogPage() {
             type="button"
             onClick={handleFinishWorkout}
             disabled={saving}
-            className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400 disabled:opacity-60"
+            className="block w-full rounded-[1.5rem] bg-emerald-500 px-5 py-4 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400 disabled:opacity-60"
           >
             {saving ? 'Saving…' : 'Finish Workout'}
           </button>

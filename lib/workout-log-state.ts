@@ -8,7 +8,8 @@ export type WorkoutExerciseEntry = {
   substitutedFrom?: string | null
   sets: WorkoutSetInput[]
   difficulty: string
-  discomfort: string
+  discomfortLocation: string
+  discomfortSeverity: string
   note: string
 }
 
@@ -18,6 +19,7 @@ export type WorkoutProgressState = {
   startedAt: string
   currentIndex: number
   completedCardio: boolean
+  cardioMinutes: string
   skippedIndices: number[]
   completedIndices: number[]
   entries: WorkoutExerciseEntry[]
@@ -33,7 +35,30 @@ export function loadWorkoutProgress(date: string, dayName: string): WorkoutProgr
   try {
     const raw = window.localStorage.getItem(getStorageKey(date, dayName))
     if (!raw) return null
-    return JSON.parse(raw) as WorkoutProgressState
+
+    const parsed = JSON.parse(raw) as WorkoutProgressState
+
+    parsed.entries = (parsed.entries ?? []).map((entry) => ({
+      ...entry,
+      discomfortLocation:
+        typeof (entry as any).discomfortLocation === 'string'
+          ? (entry as any).discomfortLocation
+          : 'None',
+      discomfortSeverity:
+        typeof (entry as any).discomfortSeverity === 'string'
+          ? (entry as any).discomfortSeverity
+          : '',
+    }))
+
+    if (typeof parsed.currentIndex !== 'number') {
+      parsed.currentIndex = -1
+    }
+
+    if (typeof parsed.cardioMinutes !== 'string') {
+      parsed.cardioMinutes = ''
+    }
+
+    return parsed
   } catch (error) {
     console.error('loadWorkoutProgress error', error)
     return null
