@@ -66,7 +66,7 @@ export default function WorkoutLogPage() {
   const workout = useMemo(() => getWorkoutForToday(), [])
   const date = getLocalDateString()
 
-  const [startedAt, setStartedAt] = useState<string>(new Date().toISOString())
+  const [startedAt, setStartedAt] = useState<string | null>(null)
   const [entries, setEntries] = useState<WorkoutExerciseEntry[]>(() =>
     buildInitialEntries(workout.exercises)
   )
@@ -87,20 +87,22 @@ export default function WorkoutLogPage() {
     const saved = loadWorkoutProgress(date, workout.dayName)
 
     if (saved) {
-      setStartedAt(saved.startedAt)
+      setStartedAt(saved.startedAt ?? new Date().toISOString())
       setEntries(saved.entries)
       setCurrentIndex(typeof saved.currentIndex === 'number' ? saved.currentIndex : -1)
       setCompletedCardio(saved.completedCardio)
       setCardioMinutes(saved.cardioMinutes ?? '')
       setSkippedIndices(saved.skippedIndices)
       setCompletedIndices(saved.completedIndices)
+    } else {
+      setStartedAt(new Date().toISOString())
     }
 
     setIsLoaded(true)
   }, [date, workout.dayName])
 
   useEffect(() => {
-    if (!isLoaded) return
+    if (!isLoaded || !startedAt) return
 
     const progress: WorkoutProgressState = {
       date,
@@ -117,9 +119,9 @@ export default function WorkoutLogPage() {
     saveWorkoutProgress(progress)
   }, [
     isLoaded,
+    startedAt,
     date,
     workout.dayName,
-    startedAt,
     currentIndex,
     completedCardio,
     cardioMinutes,
@@ -153,6 +155,7 @@ export default function WorkoutLogPage() {
       : '—'
 
   const strengthElapsedMinutes = useMemo(() => {
+    if (!startedAt) return 1
     const start = new Date(startedAt).getTime()
     const now = Date.now()
     return Math.max(1, Math.round((now - start) / 60000))
