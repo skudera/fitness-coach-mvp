@@ -17,25 +17,6 @@ function formatValue(value?: number | null, suffix = '') {
   return `${value}${suffix}`
 }
 
-function getYAxisDomain(values: Array<number | null | undefined>, paddingPercent = 0.02) {
-  const clean = values.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v))
-
-  if (!clean.length) return [0, 100]
-
-  const min = Math.min(...clean)
-  const max = Math.max(...clean)
-
-  if (min === max) {
-    const pad = Math.max(1, Math.abs(min) * paddingPercent)
-    return [Math.floor(min - pad), Math.ceil(max + pad)]
-  }
-
-  const range = max - min
-  const pad = range * paddingPercent
-
-  return [Number((min - pad).toFixed(2)), Number((max + pad).toFixed(2))]
-}
-
 function MetricTooltip({
   active,
   payload,
@@ -59,6 +40,14 @@ function MetricTooltip({
       </div>
     </div>
   )
+}
+
+function formatWeekLabel(date: string) {
+  const d = new Date(date)
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
 export default function ProgressPage() {
@@ -100,20 +89,9 @@ export default function ProgressPage() {
     }))
   }, [metrics])
 
-  const weightDomain = useMemo(
-    () => getYAxisDomain(chartData.map((row) => row.weight), 0.08),
-    [chartData]
-  )
-
-  const bodyFatDomain = useMemo(
-    () => getYAxisDomain(chartData.map((row) => row.bodyFat), 0.1),
-    [chartData]
-  )
-
-  const waterDomain = useMemo(
-    () => getYAxisDomain(chartData.map((row) => row.water), 0.05),
-    [chartData]
-  )
+  const historyRows = useMemo(() => {
+    return [...metrics].reverse()
+  }, [metrics])
 
   return (
     <div className="space-y-6 pb-6">
@@ -173,11 +151,11 @@ export default function ProgressPage() {
                 tick={{ fill: '#94a3b8', fontSize: 12 }}
               />
               <YAxis
-                domain={weightDomain}
+                domain={[170, 200]}
+                ticks={[170, 175, 180, 185, 190, 195, 200]}
                 stroke="#94a3b8"
                 tick={{ fill: '#94a3b8', fontSize: 12 }}
                 tickFormatter={(v) => String(Math.round(Number(v)))}
-                tickCount={6}
               />
               <Tooltip content={<MetricTooltip suffix=" lb" />} />
               <Line
@@ -205,11 +183,11 @@ export default function ProgressPage() {
                 tick={{ fill: '#94a3b8', fontSize: 12 }}
               />
               <YAxis
-                domain={bodyFatDomain}
+                domain={[14, 21]}
+                ticks={[14, 15, 16, 17, 18, 19, 20, 21]}
                 stroke="#94a3b8"
                 tick={{ fill: '#94a3b8', fontSize: 12 }}
-                tickFormatter={(v) => Number(v).toFixed(1)}
-                tickCount={6}
+                tickFormatter={(v) => String(Number(v))}
               />
               <Tooltip content={<MetricTooltip suffix="%" />} />
               <Line
@@ -237,11 +215,11 @@ export default function ProgressPage() {
                 tick={{ fill: '#94a3b8', fontSize: 12 }}
               />
               <YAxis
-                domain={waterDomain}
+                domain={[58, 63]}
+                ticks={[58, 58.5, 59, 59.5, 60, 60.5, 61, 61.5, 62, 62.5, 63]}
                 stroke="#94a3b8"
                 tick={{ fill: '#94a3b8', fontSize: 12 }}
                 tickFormatter={(v) => Number(v).toFixed(1)}
-                tickCount={6}
               />
               <Tooltip content={<MetricTooltip suffix="%" />} />
               <Line
@@ -275,22 +253,43 @@ export default function ProgressPage() {
 
         {loading ? (
           <p className="text-slate-300">Loading history…</p>
-        ) : metrics.length ? (
-          <div className="space-y-3">
-            {[...metrics].reverse().map((row) => (
-              <div
-                key={`${row.date}-${row.id ?? ''}`}
-                className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4"
-              >
-                <div className="text-base font-semibold text-white">{row.date}</div>
-                <div className="mt-1 text-sm text-slate-300">
-                  Weight {formatValue(row.weight, ' lb')} • Body Fat {formatValue(row.body_fat, '%')} • Water {formatValue(row.water_percent, '%')}
-                </div>
-                {row.notes ? (
-                  <div className="mt-2 text-sm text-slate-400">{row.notes}</div>
-                ) : null}
-              </div>
-            ))}
+        ) : historyRows.length ? (
+          <div className="overflow-x-auto rounded-2xl border border-slate-700">
+            <table className="min-w-full text-left text-sm text-slate-200">
+              <thead className="bg-slate-900/70">
+                <tr>
+                  <th className="px-4 py-3 font-semibold text-slate-300 whitespace-nowrap">Week</th>
+                  <th className="px-4 py-3 font-semibold text-slate-300 whitespace-nowrap">Weight</th>
+                  <th className="px-4 py-3 font-semibold text-slate-300 whitespace-nowrap">Body Fat</th>
+                  <th className="px-4 py-3 font-semibold text-slate-300 whitespace-nowrap">Water</th>
+                  <th className="px-4 py-3 font-semibold text-slate-300 whitespace-nowrap">Waist</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyRows.map((row, index) => (
+                  <tr
+                    key={`${row.date}-${row.id ?? index}`}
+                    className="border-t border-slate-700 bg-slate-900/30"
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {formatWeekLabel(row.date)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {formatValue(row.weight, ' lb')}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {formatValue(row.body_fat, '%')}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {formatValue(row.water_percent, '%')}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {formatValue(row.waist, '"')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
           <p className="text-slate-300">No history found.</p>
