@@ -368,3 +368,41 @@ export async function loadExerciseLogHistoryFromSupabase(
 
   return (data ?? []) as ExerciseLogRow[]
 }
+
+// ---------------------------
+// USER EQUIPMENT PREFERENCES
+// ---------------------------
+
+export type EquipmentPreferences = {
+  pressing_preference?: string | null
+  row_preference?: string | null
+  leg_press_preference?: string | null
+  overhead_press_preference?: string | null
+  core_preference?: string | null
+  cardio_preference?: string | null
+}
+
+export async function loadEquipmentPreferences(): Promise<EquipmentPreferences | null> {
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('*')
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error loading preferences', error)
+    return null
+  }
+
+  return data
+}
+
+export async function saveEquipmentPreferences(prefs: EquipmentPreferences) {
+  const { error } = await supabase
+    .from('user_preferences')
+    .upsert([prefs])
+
+  if (error) {
+    console.error('Error saving preferences', error)
+  }
+}
