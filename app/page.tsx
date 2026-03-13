@@ -240,6 +240,10 @@ export default function HomePage() {
     }))
   }, [meaningfulSessionDates])
 
+const perfectWeek = useMemo(() => {
+  return weekProgress.every((day) => day.completed)
+}, [weekProgress])
+
   const streakCount = useMemo(() => getWorkoutStreak(meaningfulSessionDates), [meaningfulSessionDates])
 
   const coachInsight = useMemo(
@@ -287,12 +291,18 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="pt-2">
-          <div className="label">Streak</div>
-          <div className="mt-2 text-[1.3rem] font-semibold text-white">
-            {loading ? '...' : `${streakCount} workout${streakCount === 1 ? '' : 's'} in a row`}
-          </div>
-        </div>
+<div className="pt-2">
+  <div className="label">Streak</div>
+  <div className="mt-2 text-[1.3rem] font-semibold text-white">
+    {loading ? '...' : `${streakCount} workout${streakCount === 1 ? '' : 's'} in a row`}
+  </div>
+
+  {perfectWeek && !loading ? (
+    <div className="mt-3 text-[1rem] font-semibold text-emerald-400">
+      Perfect week: 5 for 5 🔥
+    </div>
+  ) : null}
+</div>
       </section>
 
       <section className="card space-y-4">
