@@ -7,7 +7,12 @@ import {
   getTargetForExercise,
   getExerciseSubstitutions,
 } from '@/lib/workout-data'
-import { getLocalDateString, saveWorkoutAndLogsToSupabase } from '@/lib/storage-supabase'
+import {
+  getLocalDateString,
+  getWeekStartDate,
+  getWeeklySettings,
+  saveWorkoutAndLogsToSupabase,
+} from '@/lib/storage-supabase'
 import {
   loadWorkoutProgress,
   saveWorkoutProgress,
@@ -57,6 +62,12 @@ function parseFirstNumber(value: string) {
   return match ? Number(match[0]) : 0
 }
 
+function getResolvedThursdayCardio(status: string) {
+  if (status === 'yes') return 'Skip cardio if basketball happens'
+  if (status === 'no') return 'Elliptical – 10 min'
+  return 'Cardio optional depending on basketball'
+}
+
 const difficultyOptions = ['Easy', 'Good', 'Hard', 'Too Hard']
 const discomfortLocationOptions = ['None', 'Shoulder', 'Back', 'Other']
 const discomfortSeverityOptions = ['Low', 'Medium', 'High']
@@ -66,12 +77,12 @@ export default function WorkoutLogPage() {
   const workout = useMemo(() => getWorkoutForToday(), [])
   const date = getLocalDateString()
 
-  const [startedAt, setStartedAt] = useState<string | null>(null)
+  const [startedAt, setStartedAt] = useState('')
   const [entries, setEntries] = useState<WorkoutExerciseEntry[]>(() =>
     buildInitialEntries(workout.exercises)
   )
   const [currentIndex, setCurrentIndex] = useState(-1)
-  const [completedCardio, setCompletedCardio] = useState(false)
+  const [completedCardio, setCompletedCardio] = useState(true)
   const [cardioMinutes, setCardioMinutes] = useState('')
   const [skippedIndices, setSkippedIndices] = useState<number[]>([])
   const [completedIndices, setCompletedIndices] = useState<number[]>([])
@@ -80,25 +91,41 @@ export default function WorkoutLogPage() {
   const [showSubstitutions, setShowSubstitutions] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
   const [skipLock, setSkipLock] = useState(false)
+  const [basketballStatus, setBasketballStatus] = useState('unsure')
 
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    const saved = loadWorkoutProgress(date, workout.dayName)
+    async function load() {
+      const saved = loadWorkoutProgress(date, workout.dayName)
 
-    if (saved) {
-      setStartedAt(saved.startedAt ?? new Date().toISOString())
-      setEntries(saved.entries)
-      setCurrentIndex(typeof saved.currentIndex === 'number' ? saved.currentIndex : -1)
-      setCompletedCardio(saved.completedCardio)
-      setCardioMinutes(saved.cardioMinutes ?? '')
-      setSkippedIndices(saved.skippedIndices)
-      setCompletedIndices(saved.completedIndices)
-    } else {
-      setStartedAt(new Date().toISOString())
+      if (saved) {
+        setStartedAt(saved.startedAt || new Date().toISOString())
+        setEntries(saved.entries)
+        setCurrentIndex(typeof saved.currentIndex === 'number' ? saved.currentIndex : -1)
+        setCompletedCardio(
+          typeof saved.completedCardio === 'boolean' ? saved.completedCardio : true
+        )
+        setCardioMinutes(saved.cardioMinutes ?? '')
+        setSkippedIndices(saved.skippedIndices)
+        setCompletedIndices(saved.completedIndices)
+      } else {
+        setStartedAt(new Date().toISOString())
+      }
+
+      try {
+        const weekStart = getWeekStartDate()
+        const weekly = await getWeeklySettings(weekStart)
+        setBasketballStatus(weekly?.basketball_status ?? 'unsure')
+      } catch (loadError) {
+        console.error('Workout log weekly settings load error', loadError)
+        setBasketballStatus('unsure')
+      } finally {
+        setIsLoaded(true)
+      }
     }
 
-    setIsLoaded(true)
+    load()
   }, [date, workout.dayName])
 
   useEffect(() => {
@@ -147,12 +174,21 @@ export default function WorkoutLogPage() {
     return getNextPendingIndex(currentIndex, entries.length, completedIndices)
   }, [currentIndex, entries.length, completedIndices])
 
+  const incompleteIndices = entries
+    .map((_, index) => index)
+    .filter((index) => !completedIndices.includes(index))
+
+  const isCurrentLastIncomplete =
+    currentIndex >= 0 &&
+    incompleteIndices.length === 1 &&
+    incompleteIndices[0] === currentIndex
+
   const nextLabel =
-    nextPendingIndex >= 0 && entries[nextPendingIndex]
-      ? entries[nextPendingIndex].name
-      : completedIndices.length === entries.length
+    isCurrentLastIncomplete
       ? 'Cardio / Finish'
-      : '—'
+      : nextPendingIndex >= 0 && entries[nextPendingIndex]
+      ? entries[nextPendingIndex].name
+      : 'Cardio / Finish'
 
   const strengthElapsedMinutes = useMemo(() => {
     if (!startedAt) return 1
@@ -161,9 +197,16 @@ export default function WorkoutLogPage() {
     return Math.max(1, Math.round((now - start) / 60000))
   }, [startedAt])
 
+  const resolvedCardioText = useMemo(() => {
+    if (workout.dayName === 'Thursday') {
+      return getResolvedThursdayCardio(basketballStatus)
+    }
+    return workout.cardio
+  }, [workout.dayName, workout.cardio, basketballStatus])
+
   const plannedCardioMinutes = useMemo(() => {
-    return parseFirstNumber(workout.cardio)
-  }, [workout.cardio])
+    return parseFirstNumber(resolvedCardioText)
+  }, [resolvedCardioText])
 
   const targetSessionMinutes = useMemo(() => {
     return parseFirstNumber(workout.estimatedMinutes)
@@ -177,6 +220,26 @@ export default function WorkoutLogPage() {
 
     return Math.min(Math.max(plannedCardioMinutes, remaining), 20)
   }, [targetSessionMinutes, strengthElapsedMinutes, plannedCardioMinutes])
+
+  useEffect(() => {
+    if (!isLoaded) return
+    if (!completedIndices.length || completedIndices.length !== entries.length) return
+    if (!completedCardio) return
+    if (cardioMinutes) return
+
+    const defaultMinutes = suggestedCardioMinutes || plannedCardioMinutes || 0
+    if (defaultMinutes > 0) {
+      setCardioMinutes(String(defaultMinutes))
+    }
+  }, [
+    isLoaded,
+    completedIndices.length,
+    entries.length,
+    completedCardio,
+    cardioMinutes,
+    suggestedCardioMinutes,
+    plannedCardioMinutes,
+  ])
 
   const actualCardioMinutesNumber =
     completedCardio && cardioMinutes ? Number(cardioMinutes) : 0
@@ -323,7 +386,7 @@ export default function WorkoutLogPage() {
         strength_minutes: strengthElapsedMinutes,
         cardio_minutes: safeCardioMinutes,
         warmup_text: workout.warmup,
-        cardio_text: workout.cardio,
+        cardio_text: resolvedCardioText,
         completed_cardio: completedCardio,
         exercise_order: entries.map((entry) => entry.name),
         exercise_logs: exerciseLogs,
