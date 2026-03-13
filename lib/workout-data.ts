@@ -22,11 +22,11 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
         estimatedMinutes: '20–30 min optional',
         warmup: 'Easy walk + mobility',
         exercises: [
-          'Light mobility flow',
-          'Hip mobility',
-          'Thoracic rotation',
-          'Hamstring stretch',
-          'Shoulder mobility',
+          'Mobility Flow',
+          'Hip Mobility',
+          'Thoracic Rotation',
+          'Hamstring Stretch',
+          'Shoulder Mobility',
         ],
         cardio: 'Optional easy walk',
         restDay: true,
@@ -39,11 +39,11 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
         estimatedMinutes: '75 min planned',
         warmup: '5 min treadmill + shoulder mobility',
         exercises: [
-          'Incline DB Press',
-          'Machine Chest Press',
+          'Incline Chest Press Machine',
+          'Flat Chest Press Machine',
           'Cable Lateral Raise',
           'Rear Delt Machine',
-          'Cable Fly',
+          'Pec Deck Fly',
           'Triceps Pressdown',
         ],
         cardio: 'Elliptical – 12 min',
@@ -57,8 +57,8 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
         estimatedMinutes: '75 min planned',
         warmup: '5 min treadmill + band work',
         exercises: [
-          'Lat Pulldown',
-          'Seated Row',
+          'Neutral Grip Lat Pulldown',
+          'Seated Row Machine',
           'Straight Arm Pulldown',
           'Face Pull',
           'Cable Curl',
@@ -75,11 +75,11 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
         estimatedMinutes: '75 min planned',
         warmup: '5 min treadmill + lower body mobility',
         exercises: [
-          'Leg Press',
+          'Leg Press (45° Plate Loaded)',
           'Seated Hamstring Curl',
           'Leg Extension',
-          'Calf Raise',
-          'Hip Abductor',
+          'Seated Calf Raise',
+          'Abductor Machine',
           'Ab Machine',
         ],
         cardio: 'Elliptical – 12 min',
@@ -93,8 +93,8 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
         estimatedMinutes: '70 min planned',
         warmup: '5 min treadmill + upper mobility',
         exercises: [
-          'Machine Chest Press',
-          'Lat Pulldown',
+          'Flat Chest Press Machine',
+          'Neutral Grip Lat Pulldown',
           'Cable Lateral Raise',
           'Face Pull',
           'Cable Curl',
@@ -111,11 +111,11 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
         estimatedMinutes: '75 min planned',
         warmup: '5 min treadmill + mobility',
         exercises: [
-          'Hack Squat or Leg Press',
-          'Hamstring Curl',
+          'Hack Squat',
+          'Seated Hamstring Curl',
           'Adductor Machine',
           'Abductor Machine',
-          'Calf Raise',
+          'Seated Calf Raise',
           'Cable Crunch',
         ],
         cardio: 'Treadmill incline walk – 12 min',
@@ -166,7 +166,7 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
   const name = exerciseName.toLowerCase()
 
   if (
-    name.includes('press') ||
+    name.includes('press machine') ||
     name.includes('pulldown') ||
     name.includes('row') ||
     name.includes('leg press') ||
@@ -194,7 +194,8 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
     name.includes('ab') ||
     name.includes('crunch') ||
     name.includes('mobility') ||
-    name.includes('stretch')
+    name.includes('stretch') ||
+    name.includes('plank')
   ) {
     return { sets: 3, reps: '12–15' }
   }
@@ -205,40 +206,40 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
 export function getExerciseSubstitutions(exerciseName: string): string[] {
   const name = exerciseName.toLowerCase()
 
-  if (name.includes('incline db press')) {
-    return ['Machine Chest Press', 'Cable Chest Press', 'Incline Push-Up']
+  if (name.includes('incline chest press machine')) {
+    return ['Flat Chest Press Machine', 'Cable Chest Press', 'Assisted Dip']
   }
 
-  if (name.includes('machine chest press')) {
-    return ['Cable Chest Press', 'Incline DB Press', 'Push-Up']
+  if (name.includes('flat chest press machine')) {
+    return ['Incline Chest Press Machine', 'Cable Chest Press', 'Pec Deck Fly']
   }
 
   if (name.includes('cable lateral raise')) {
-    return ['Machine Lateral Raise', 'Rear Delt Machine', 'Face Pull']
+    return ['Lateral Raise Machine', 'Rear Delt Machine', 'Face Pull']
   }
 
-  if (name.includes('rear delt')) {
+  if (name.includes('rear delt machine')) {
     return ['Face Pull', 'Cable Lateral Raise', 'Reverse Pec Deck']
   }
 
-  if (name.includes('cable fly')) {
-    return ['Pec Deck', 'Machine Chest Press', 'Push-Up']
+  if (name.includes('pec deck fly')) {
+    return ['Cable Fly', 'Flat Chest Press Machine', 'Cable Chest Press']
   }
 
   if (name.includes('triceps pressdown')) {
-    return ['Overhead Rope Extension', 'Machine Dip', 'Close-Grip Push-Up']
+    return ['Overhead Rope Extension', 'Assisted Dip', 'Cable Chest Press']
   }
 
-  if (name.includes('lat pulldown')) {
-    return ['Neutral-Grip Pulldown', 'High Row Machine', 'Assisted Pull-Up']
+  if (name.includes('neutral grip lat pulldown')) {
+    return ['Assisted Pullup', 'Hammer Iso Row', 'Straight Arm Pulldown']
   }
 
-  if (name.includes('seated row')) {
-    return ['Chest Supported Row', 'Cable Row', 'Hammer Strength Row']
+  if (name.includes('seated row machine')) {
+    return ['Hammer Iso Row', 'Chest Supported Row', 'Cable Row']
   }
 
   if (name.includes('straight arm pulldown')) {
-    return ['Cable Row', 'Lat Prayer Pulldown', 'Face Pull']
+    return ['Face Pull', 'Cable Row', 'Neutral Grip Lat Pulldown']
   }
 
   if (name.includes('face pull')) {
@@ -250,44 +251,91 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
   }
 
   if (name.includes('cable crunch')) {
-    return ['Ab Machine', 'Decline Crunch', 'Plank']
+    return ['Ab Machine', 'Roman Chair Leg Raise', 'Plank']
   }
 
-  if (name.includes('leg press')) {
-    return ['Hack Squat', 'Smith Squat', 'Goblet Squat']
+  if (name.includes('leg press (45')) {
+    return ['Hack Squat', 'Seated Leg Press Machine', 'Smith Machine Squat']
   }
 
-  if (name.includes('hamstring curl')) {
-    return ['Lying Leg Curl', 'Nordic Curl', 'Glute Bridge']
+  if (name.includes('seated hamstring curl')) {
+    return ['Hip Thrust Machine', 'Back Extension', 'Lying Leg Curl']
   }
 
   if (name.includes('leg extension')) {
-    return ['Split Squat', 'Goblet Squat', 'Wall Sit']
+    return ['Hack Squat', 'Leg Press (45° Plate Loaded)', 'Smith Machine Squat']
   }
 
-  if (name.includes('calf raise')) {
-    return ['Seated Calf Raise', 'Leg Press Calf Raise', 'Bodyweight Calf Raise']
-  }
-
-  if (name.includes('hip abductor')) {
-    return ['Lateral Band Walk', 'Cable Hip Abduction', 'Glute Bridge']
-  }
-
-  if (name.includes('ab machine')) {
-    return ['Cable Crunch', 'Dead Bug', 'Plank']
-  }
-
-  if (name.includes('hack squat')) {
-    return ['Leg Press', 'Smith Squat', 'Goblet Squat']
-  }
-
-  if (name.includes('adductor machine')) {
-    return ['Cable Adduction', 'Bodyweight Side Lunge', 'Split Squat']
+  if (name.includes('seated calf raise')) {
+    return ['Leg Press (45° Plate Loaded)', 'Hack Squat', 'Seated Leg Press Machine']
   }
 
   if (name.includes('abductor machine')) {
-    return ['Hip Abductor', 'Lateral Band Walk', 'Cable Hip Abduction']
+    return ['Adductor Machine', 'Hip Thrust Machine', 'Back Extension']
   }
 
-  return ['Cable Variation', 'Machine Variation', 'Bodyweight Alternative']
+  if (name.includes('ab machine')) {
+    return ['Cable Crunch', 'Roman Chair Leg Raise', 'Plank']
+  }
+
+  if (name.includes('hack squat')) {
+    return ['Leg Press (45° Plate Loaded)', 'Seated Leg Press Machine', 'Smith Machine Squat']
+  }
+
+  if (name.includes('adductor machine')) {
+    return ['Abductor Machine', 'Hip Thrust Machine', 'Back Extension']
+  }
+
+  return ['Machine Variation', 'Cable Variation', 'Bodyweight Alternative']
+}
+
+export function getExerciseHistoryAliases(exerciseName: string): string[] {
+  const map: Record<string, string[]> = {
+    'Incline Chest Press Machine': ['Incline Chest Press Machine', 'Incline DB Press'],
+    'Flat Chest Press Machine': ['Flat Chest Press Machine', 'Machine Chest Press'],
+    'Pec Deck Fly': ['Pec Deck Fly', 'Cable Fly', 'Pec Deck'],
+    'Cable Fly': ['Cable Fly', 'Pec Deck Fly'],
+    'Cable Chest Press': ['Cable Chest Press', 'Machine Chest Press'],
+    'Triceps Pressdown': ['Triceps Pressdown', 'Triceps Pressdown Station'],
+    'Overhead Rope Extension': ['Overhead Rope Extension'],
+    'Assisted Dip': ['Assisted Dip', 'Machine Dip'],
+
+    'Neutral Grip Lat Pulldown': ['Neutral Grip Lat Pulldown', 'Lat Pulldown'],
+    'Seated Row Machine': ['Seated Row Machine', 'Seated Row'],
+    'Hammer Iso Row': ['Hammer Iso Row', 'Hammer Strength Row'],
+    'Chest Supported Row': ['Chest Supported Row', 'Chest Supported Row Machine'],
+    'Cable Row': ['Cable Row'],
+    'Straight Arm Pulldown': ['Straight Arm Pulldown', 'Straight Arm Pulldown Setup'],
+    'Face Pull': ['Face Pull'],
+    'Assisted Pullup': ['Assisted Pullup', 'Assisted Pull-Up'],
+
+    'Cable Lateral Raise': ['Cable Lateral Raise', 'DB Lateral Raise'],
+    'Lateral Raise Machine': ['Lateral Raise Machine'],
+    'Rear Delt Machine': ['Rear Delt Machine', 'Reverse Pec Deck'],
+    'Shoulder Press Machine': ['Shoulder Press Machine'],
+
+    'Leg Press (45° Plate Loaded)': [
+      'Leg Press (45° Plate Loaded)',
+      'Leg Press',
+      '45 Degree Leg Press',
+      '45-Degree Leg Press',
+    ],
+    'Seated Leg Press Machine': ['Seated Leg Press Machine', 'Linear Leg Press'],
+    'Hack Squat': ['Hack Squat', 'Hack Squat or Leg Press'],
+    'Leg Extension': ['Leg Extension'],
+    'Seated Hamstring Curl': ['Seated Hamstring Curl', 'Hamstring Curl'],
+    'Seated Calf Raise': ['Seated Calf Raise', 'Calf Raise'],
+    'Adductor Machine': ['Adductor Machine', 'Adductor / Abductor'],
+    'Abductor Machine': ['Abductor Machine', 'Hip Abductor'],
+    'Hip Thrust Machine': ['Hip Thrust Machine', 'Glute Bridge Machine'],
+    'Back Extension': ['Back Extension', 'Hyperextension'],
+
+    'Ab Machine': ['Ab Machine'],
+    'Cable Crunch': ['Cable Crunch'],
+    'Roman Chair Leg Raise': ['Roman Chair Leg Raise', "Captain's Chair"],
+    'Plank': ['Plank'],
+    'Cable Curl': ['Cable Curl'],
+  }
+
+  return map[exerciseName] ?? [exerciseName]
 }

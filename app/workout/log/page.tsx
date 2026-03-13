@@ -6,12 +6,15 @@ import {
   getWorkoutForToday,
   getTargetForExercise,
   getExerciseSubstitutions,
+  getExerciseHistoryAliases,
 } from '@/lib/workout-data'
 import {
   getLocalDateString,
   getWeekStartDate,
   getWeeklySettings,
   saveWorkoutAndLogsToSupabase,
+  loadExerciseLogHistoryFromSupabase,
+  type ExerciseLogRow,
 } from '@/lib/storage-supabase'
 import {
   loadWorkoutProgress,
@@ -62,10 +65,51 @@ function parseFirstNumber(value: string) {
   return match ? Number(match[0]) : 0
 }
 
+function parseRepRange(value: string) {
+  const match = value.match(/(\d+)\D+(\d+)/)
+  if (match) {
+    return { low: Number(match[1]), high: Number(match[2]) }
+  }
+  const single = parseFirstNumber(value)
+  return { low: single, high: single }
+}
+
 function getResolvedThursdayCardio(status: string) {
   if (status === 'yes') return 'Skip cardio if basketball happens'
   if (status === 'no') return 'Elliptical – 10 min'
   return 'Cardio optional depending on basketball'
+}
+
+function getLatestPerformance(logs: ExerciseLogRow[], aliases: string[]) {
+  const aliasSet = new Set(aliases)
+  const relevant = [...logs]
+    .filter((log) => aliasSet.has(log.exercise_name))
+    .sort((a, b) => {
+      const aTime = new Date(a.created_at ?? 0).getTime()
+      const bTime = new Date(b.created_at ?? 0).getTime()
+      return bTime - aTime
+    })
+
+  if (!relevant.length) return null
+
+  const latest = relevant[0]
+  const latestGroup = relevant.filter(
+    (log) => log.workout_id === latest.workout_id && log.exercise_name === latest.exercise_name
+  )
+
+  const weightedSets = latestGroup.filter((log) => (log.weight ?? 0) > 0)
+  if (!weightedSets.length) return null
+
+  const topWeight = Math.max(...weightedSets.map((log) => log.weight ?? 0))
+  const setsAtTopWeight = weightedSets.filter((log) => (log.weight ?? 0) === topWeight)
+  const topReps = Math.max(...setsAtTopWeight.map((log) => log.reps ?? 0))
+  const lastDifficulty = latestGroup.find((log) => log.difficulty)?.difficulty ?? null
+
+  return {
+    topWeight,
+    topReps,
+    lastDifficulty,
+  }
 }
 
 const difficultyOptions = ['Easy', 'Good', 'Hard', 'Too Hard']
@@ -92,6 +136,7 @@ export default function WorkoutLogPage() {
   const [isLoaded, setIsLoaded] = useState(false)
   const [skipLock, setSkipLock] = useState(false)
   const [basketballStatus, setBasketballStatus] = useState('unsure')
+  const [historyLogs, setHistoryLogs] = useState<ExerciseLogRow[]>([])
 
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null)
 
@@ -127,6 +172,33 @@ export default function WorkoutLogPage() {
 
     load()
   }, [date, workout.dayName])
+
+  const historyAliasPool = useMemo(() => {
+    const names = new Set<string>()
+
+    entries.forEach((entry) => {
+      getExerciseHistoryAliases(entry.name).forEach((name) => names.add(name))
+      getExerciseSubstitutions(entry.name).forEach((sub) => {
+        getExerciseHistoryAliases(sub).forEach((name) => names.add(name))
+      })
+    })
+
+    return [...names]
+  }, [entries])
+
+  useEffect(() => {
+    async function loadHistory() {
+      if (!historyAliasPool.length) {
+        setHistoryLogs([])
+        return
+      }
+
+      const logs = await loadExerciseLogHistoryFromSupabase(historyAliasPool)
+      setHistoryLogs(logs)
+    }
+
+    loadHistory()
+  }, [historyAliasPool.join('|')])
 
   useEffect(() => {
     if (!isLoaded || !startedAt) return
@@ -249,6 +321,38 @@ export default function WorkoutLogPage() {
   const substitutionOptions = currentEntry
     ? getExerciseSubstitutions(currentEntry.name).filter((option) => option !== currentEntry.name)
     : []
+
+  const suggestion = useMemo(() => {
+    if (!currentEntry || !currentTarget) return null
+
+    const aliases = getExerciseHistoryAliases(currentEntry.name)
+    const latest = getLatestPerformance(historyLogs, aliases)
+
+    if (!latest || !latest.topWeight) return null
+
+    const repRange = parseRepRange(currentTarget.reps)
+    let suggestedWeight = latest.topWeight
+    let note = 'Using last session as a guide'
+
+    if (
+      (latest.lastDifficulty === 'Easy' || latest.lastDifficulty === 'Good') &&
+      latest.topReps >= repRange.high
+    ) {
+      suggestedWeight = latest.topWeight + 5
+      note = 'Increased based on prior logs'
+    } else if (
+      latest.lastDifficulty === 'Too Hard' &&
+      latest.topReps <= repRange.low
+    ) {
+      suggestedWeight = Math.max(0, latest.topWeight - 5)
+      note = 'Adjusted down based on prior logs'
+    }
+
+    return {
+      suggestedWeight,
+      note,
+    }
+  }, [currentEntry, currentTarget, historyLogs])
 
   function updateSetValue(setIndex: number, field: 'weight' | 'reps', value: string) {
     if (currentIndex < 0) return
@@ -481,6 +585,10 @@ export default function WorkoutLogPage() {
               </p>
             ) : null}
 
+            {suggestion ? (
+              <p className="text-xs text-emerald-400">{suggestion.note}</p>
+            ) : null}
+
             <p className="text-xs text-slate-400">Next: {nextLabel}</p>
           </div>
         ) : isWarmupStep ? (
@@ -569,7 +677,7 @@ export default function WorkoutLogPage() {
                     onChange={(e) => updateSetValue(setIndex, 'weight', e.target.value)}
                     inputMode="decimal"
                     className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-white outline-none"
-                    placeholder="Weight"
+                    placeholder={suggestion ? String(suggestion.suggestedWeight) : 'Weight'}
                   />
 
                   <input

@@ -346,3 +346,25 @@ export async function loadWorkoutHistoryBundleFromSupabase(): Promise<{
     logs: (logsData ?? []) as ExerciseLogRow[],
   }
 }
+
+export async function loadExerciseLogHistoryFromSupabase(
+  exerciseNames: string[]
+): Promise<ExerciseLogRow[]> {
+  if (!exerciseNames.length) return []
+
+  const uniqueNames = [...new Set(exerciseNames)]
+
+  const { data, error } = await supabase
+    .from('exercise_logs')
+    .select('*')
+    .in('exercise_name', uniqueNames)
+    .order('created_at', { ascending: false })
+    .limit(300)
+
+  if (error) {
+    console.error('Exercise log suggestion load error:', error)
+    return []
+  }
+
+  return (data ?? []) as ExerciseLogRow[]
+}
