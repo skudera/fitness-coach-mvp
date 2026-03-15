@@ -57,6 +57,15 @@ export type ExerciseLogRow = {
   created_at?: string
 }
 
+export type EquipmentPreferences = {
+  pressing_preference?: string | null
+  row_preference?: string | null
+  leg_press_preference?: string | null
+  overhead_press_preference?: string | null
+  core_preference?: string | null
+  cardio_preference?: string | null
+}
+
 export function getLocalDateString(date = new Date()) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -367,19 +376,6 @@ export async function loadExerciseLogHistoryFromSupabase(
   }
 
   return (data ?? []) as ExerciseLogRow[]
-}
-
-// ---------------------------
-// USER EQUIPMENT PREFERENCES
-// ---------------------------
-
-export type EquipmentPreferences = {
-  pressing_preference?: string | null
-  row_preference?: string | null
-  leg_press_preference?: string | null
-  overhead_press_preference?: string | null
-  core_preference?: string | null
-  cardio_preference?: string | null
 }
 
 export async function loadEquipmentPreferences(): Promise<EquipmentPreferences | null> {
