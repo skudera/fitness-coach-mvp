@@ -112,6 +112,62 @@ function getLatestPerformance(logs: ExerciseLogRow[], aliases: string[]) {
   }
 }
 
+type ExerciseCategory =
+  | 'lowerCompound'
+  | 'upperCompound'
+  | 'accessory'
+  | 'isolation'
+
+function getExerciseCategory(exerciseName: string): ExerciseCategory {
+  const name = exerciseName.toLowerCase()
+
+  if (
+    name.includes('leg press') ||
+    name.includes('hack squat')
+  ) {
+    return 'lowerCompound'
+  }
+
+  if (
+    name.includes('press machine') ||
+    name.includes('pulldown') ||
+    name.includes('row') ||
+    name.includes('shoulder press')
+  ) {
+    return 'upperCompound'
+  }
+
+  if (
+    name.includes('seated hamstring curl') ||
+    name.includes('hip thrust') ||
+    name.includes('back extension') ||
+    name.includes('assisted dip')
+  ) {
+    return 'accessory'
+  }
+
+  return 'isolation'
+}
+
+function getProgressionIncrement(category: ExerciseCategory) {
+  if (category === 'lowerCompound') return 10
+  return 5
+}
+
+function getRampOffsets(category: ExerciseCategory) {
+  if (category === 'lowerCompound') return [20, 10, 0]
+  if (category === 'upperCompound') return [10, 0, 0]
+  return [0, 0, 0]
+}
+
+function buildSetSuggestions(
+  workingWeight: number,
+  category: ExerciseCategory
+): number[] {
+  const offsets = getRampOffsets(category)
+  return offsets.map((offset) => Math.max(0, workingWeight - offset))
+}
+
 const difficultyOptions = ['Easy', 'Good', 'Hard', 'Too Hard']
 const discomfortLocationOptions = ['None', 'Shoulder', 'Back', 'Other']
 const discomfortSeverityOptions = ['Low', 'Medium', 'High']
@@ -342,26 +398,37 @@ export default function WorkoutLogPage() {
 
     if (!latest || !latest.topWeight) return null
 
+    const category = getExerciseCategory(currentEntry.name)
     const repRange = parseRepRange(currentTarget.reps)
-    let suggestedWeight = latest.topWeight
+    const increment = getProgressionIncrement(category)
+
+    let workingWeight = latest.topWeight
     let note = 'Using last session as a guide'
+
+    const hitTopOfRange = latest.topReps >= repRange.high
+    const belowRange = latest.topReps < repRange.low
+    const withinRangeNotReady = latest.topReps >= repRange.low && latest.topReps < repRange.high
 
     if (
       (latest.lastDifficulty === 'Easy' || latest.lastDifficulty === 'Good') &&
-      latest.topReps >= repRange.high
+      hitTopOfRange
     ) {
-      suggestedWeight = latest.topWeight + 5
+      workingWeight = latest.topWeight + increment
       note = 'Increased based on prior logs'
     } else if (
       latest.lastDifficulty === 'Too Hard' &&
-      latest.topReps <= repRange.low
+      belowRange
     ) {
-      suggestedWeight = Math.max(0, latest.topWeight - 5)
+      workingWeight = Math.max(0, latest.topWeight - increment)
       note = 'Adjusted down based on prior logs'
+    } else if (withinRangeNotReady) {
+      workingWeight = latest.topWeight
+      note = 'Holding based on prior reps'
     }
 
     return {
-      suggestedWeight,
+      workingWeight,
+      setWeights: buildSetSuggestions(workingWeight, category),
       note,
     }
   }, [currentEntry, currentTarget, historyLogs])
@@ -689,7 +756,11 @@ export default function WorkoutLogPage() {
                     onChange={(e) => updateSetValue(setIndex, 'weight', e.target.value)}
                     inputMode="decimal"
                     className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-white outline-none"
-                    placeholder={suggestion ? String(suggestion.suggestedWeight) : 'Weight'}
+                    placeholder={
+                      suggestion?.setWeights?.[setIndex] != null
+                        ? String(suggestion.setWeights[setIndex])
+                        : 'Weight'
+                    }
                   />
 
                   <input
