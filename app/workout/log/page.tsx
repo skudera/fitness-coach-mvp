@@ -122,6 +122,7 @@ export default function WorkoutLogPage() {
   const date = getLocalDateString()
 
   const [startedAt, setStartedAt] = useState('')
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const [entries, setEntries] = useState<WorkoutExerciseEntry[]>(() =>
     buildInitialEntries(workout.exercises)
   )
@@ -172,6 +173,18 @@ export default function WorkoutLogPage() {
 
     load()
   }, [date, workout.dayName])
+
+  useEffect(() => {
+    if (!startedAt) return
+
+    setNowMs(Date.now())
+
+    const interval = window.setInterval(() => {
+      setNowMs(Date.now())
+    }, 15000)
+
+    return () => window.clearInterval(interval)
+  }, [startedAt])
 
   const historyAliasPool = useMemo(() => {
     const names = new Set<string>()
@@ -265,9 +278,8 @@ export default function WorkoutLogPage() {
   const strengthElapsedMinutes = useMemo(() => {
     if (!startedAt) return 1
     const start = new Date(startedAt).getTime()
-    const now = Date.now()
-    return Math.max(1, Math.round((now - start) / 60000))
-  }, [startedAt])
+    return Math.max(1, Math.round((nowMs - start) / 60000))
+  }, [startedAt, nowMs])
 
   const resolvedCardioText = useMemo(() => {
     if (workout.dayName === 'Thursday') {
