@@ -17,6 +17,7 @@ export type WorkoutProgressState = {
   date: string
   dayName: string
   startedAt: string
+  strengthEndedAt?: string
   currentIndex: number
   completedCardio: boolean
   cardioMinutes: string
@@ -56,6 +57,10 @@ export function loadWorkoutProgress(date: string, dayName: string): WorkoutProgr
 
     if (typeof parsed.cardioMinutes !== 'string') {
       parsed.cardioMinutes = ''
+    }
+
+    if (typeof parsed.strengthEndedAt !== 'string') {
+      parsed.strengthEndedAt = ''
     }
 
     return parsed

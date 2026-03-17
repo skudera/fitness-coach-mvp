@@ -121,10 +121,7 @@ type ExerciseCategory =
 function getExerciseCategory(exerciseName: string): ExerciseCategory {
   const name = exerciseName.toLowerCase()
 
-  if (
-    name.includes('leg press') ||
-    name.includes('hack squat')
-  ) {
+  if (name.includes('leg press') || name.includes('hack squat')) {
     return 'lowerCompound'
   }
 
@@ -160,12 +157,31 @@ function getRampOffsets(category: ExerciseCategory) {
   return [0, 0, 0]
 }
 
-function buildSetSuggestions(
-  workingWeight: number,
-  category: ExerciseCategory
-): number[] {
+function buildSetSuggestions(workingWeight: number, category: ExerciseCategory): number[] {
   const offsets = getRampOffsets(category)
   return offsets.map((offset) => Math.max(0, workingWeight - offset))
+}
+
+function getSuggestedCardioMinutes(
+  plannedCardioMinutes: number,
+  targetSessionMinutes: number,
+  strengthElapsedMinutes: number
+) {
+  if (!plannedCardioMinutes) return 0
+  if (!targetSessionMinutes) return plannedCardioMinutes
+
+  const projectedWithPlanned = strengthElapsedMinutes + plannedCardioMinutes
+  const shortfall = targetSessionMinutes - projectedWithPlanned
+
+  if (shortfall <= 3) {
+    return plannedCardioMinutes
+  }
+
+  if (shortfall <= 8) {
+    return plannedCardioMinutes + 2
+  }
+
+  return Math.min(plannedCardioMinutes + 4, 20)
 }
 
 const difficultyOptions = ['Easy', 'Good', 'Hard', 'Too Hard']
@@ -178,6 +194,7 @@ export default function WorkoutLogPage() {
   const date = getLocalDateString()
 
   const [startedAt, setStartedAt] = useState('')
+  const [strengthEndedAt, setStrengthEndedAt] = useState('')
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [entries, setEntries] = useState<WorkoutExerciseEntry[]>(() =>
     buildInitialEntries(workout.exercises)
@@ -203,6 +220,7 @@ export default function WorkoutLogPage() {
 
       if (saved) {
         setStartedAt(saved.startedAt || new Date().toISOString())
+        setStrengthEndedAt(saved.strengthEndedAt || '')
         setEntries(saved.entries)
         setCurrentIndex(typeof saved.currentIndex === 'number' ? saved.currentIndex : -1)
         setCompletedCardio(
@@ -232,6 +250,7 @@ export default function WorkoutLogPage() {
 
   useEffect(() => {
     if (!startedAt) return
+    if (strengthEndedAt) return
 
     setNowMs(Date.now())
 
@@ -240,7 +259,7 @@ export default function WorkoutLogPage() {
     }, 15000)
 
     return () => window.clearInterval(interval)
-  }, [startedAt])
+  }, [startedAt, strengthEndedAt])
 
   const historyAliasPool = useMemo(() => {
     const names = new Set<string>()
@@ -276,6 +295,7 @@ export default function WorkoutLogPage() {
       date,
       dayName: workout.dayName,
       startedAt,
+      strengthEndedAt,
       currentIndex,
       completedCardio,
       cardioMinutes,
@@ -288,6 +308,7 @@ export default function WorkoutLogPage() {
   }, [
     isLoaded,
     startedAt,
+    strengthEndedAt,
     date,
     workout.dayName,
     currentIndex,
@@ -331,11 +352,24 @@ export default function WorkoutLogPage() {
       ? entries[nextPendingIndex].name
       : 'Cardio / Finish'
 
+  const allExercisesCompleted = completedIndices.length === entries.length
+  const isWarmupStep = currentIndex === -1
+
+  useEffect(() => {
+    if (!allExercisesCompleted) return
+    if (strengthEndedAt) return
+
+    setStrengthEndedAt(new Date().toISOString())
+  }, [allExercisesCompleted, strengthEndedAt])
+
   const strengthElapsedMinutes = useMemo(() => {
     if (!startedAt) return 1
+
     const start = new Date(startedAt).getTime()
-    return Math.max(1, Math.round((nowMs - start) / 60000))
-  }, [startedAt, nowMs])
+    const end = strengthEndedAt ? new Date(strengthEndedAt).getTime() : nowMs
+
+    return Math.max(1, Math.round((end - start) / 60000))
+  }, [startedAt, strengthEndedAt, nowMs])
 
   const resolvedCardioText = useMemo(() => {
     if (workout.dayName === 'Thursday') {
@@ -353,17 +387,16 @@ export default function WorkoutLogPage() {
   }, [workout.estimatedMinutes])
 
   const suggestedCardioMinutes = useMemo(() => {
-    if (!targetSessionMinutes) return plannedCardioMinutes || 0
-
-    const remaining = Math.max(0, targetSessionMinutes - strengthElapsedMinutes)
-    if (!plannedCardioMinutes) return Math.min(remaining, 20)
-
-    return Math.min(Math.max(plannedCardioMinutes, remaining), 20)
-  }, [targetSessionMinutes, strengthElapsedMinutes, plannedCardioMinutes])
+    return getSuggestedCardioMinutes(
+      plannedCardioMinutes,
+      targetSessionMinutes,
+      strengthElapsedMinutes
+    )
+  }, [plannedCardioMinutes, targetSessionMinutes, strengthElapsedMinutes])
 
   useEffect(() => {
     if (!isLoaded) return
-    if (!completedIndices.length || completedIndices.length !== entries.length) return
+    if (!allExercisesCompleted) return
     if (!completedCardio) return
     if (cardioMinutes) return
 
@@ -373,8 +406,7 @@ export default function WorkoutLogPage() {
     }
   }, [
     isLoaded,
-    completedIndices.length,
-    entries.length,
+    allExercisesCompleted,
     completedCardio,
     cardioMinutes,
     suggestedCardioMinutes,
@@ -415,10 +447,7 @@ export default function WorkoutLogPage() {
     ) {
       workingWeight = latest.topWeight + increment
       note = 'Increased based on prior logs'
-    } else if (
-      latest.lastDifficulty === 'Too Hard' &&
-      belowRange
-    ) {
+    } else if (latest.lastDifficulty === 'Too Hard' && belowRange) {
       workingWeight = Math.max(0, latest.topWeight - increment)
       note = 'Adjusted down based on prior logs'
     } else if (withinRangeNotReady) {
@@ -584,9 +613,6 @@ export default function WorkoutLogPage() {
       setSaving(false)
     }
   }
-
-  const allExercisesCompleted = completedIndices.length === entries.length
-  const isWarmupStep = currentIndex === -1
 
   return (
     <div className="space-y-4 pb-6">
