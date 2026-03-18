@@ -50,6 +50,74 @@ function formatWeekLabel(date: string) {
   })
 }
 
+type ProgressChartSectionProps = {
+  title: string
+  data: Array<{
+    date: string
+    weight: number | null
+    bodyFat: number | null
+    water: number | null
+    waist: number | null
+  }>
+  dataKey: 'weight' | 'bodyFat' | 'water'
+  stroke: string
+  suffix: string
+  yDomain: [number, number]
+  yTicks: number[]
+  yTickFormatter: (value: number) => string
+}
+
+function ProgressChartSection({
+  title,
+  data,
+  dataKey,
+  stroke,
+  suffix,
+  yDomain,
+  yTicks,
+  yTickFormatter,
+}: ProgressChartSectionProps) {
+  return (
+    <section className="card space-y-4">
+      <div className="label">{title}</div>
+      <div className="w-full min-w-0 overflow-hidden rounded-xl">
+        <ResponsiveContainer width="100%" height={256}>
+          <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+            <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+            <XAxis
+              dataKey="date"
+              stroke="#94a3b8"
+              tick={{ fill: '#94a3b8', fontSize: 12 }}
+              tickFormatter={formatWeekLabel}
+            />
+            <YAxis
+              domain={yDomain}
+              ticks={yTicks}
+              stroke="#94a3b8"
+              tick={{ fill: '#94a3b8', fontSize: 12 }}
+              tickFormatter={(v) => yTickFormatter(Number(v))}
+              width={40}
+            />
+            <Tooltip
+              content={<MetricTooltip suffix={suffix} />}
+              labelFormatter={(label) => formatWeekLabel(String(label))}
+            />
+            <Line
+              type="monotone"
+              dataKey={dataKey}
+              stroke={stroke}
+              strokeWidth={3}
+              dot={{ r: 4 }}
+              activeDot={{ r: 6 }}
+              connectNulls={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  )
+}
+
 export default function ProgressPage() {
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -139,101 +207,38 @@ export default function ProgressPage() {
         )}
       </section>
 
-      <section className="card space-y-4">
-        <div className="label">Weight trend</div>
-        <div className="h-64 min-h-[16rem] w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-              <XAxis
-                dataKey="date"
-                stroke="#94a3b8"
-                tick={{ fill: '#94a3b8', fontSize: 12 }}
-              />
-              <YAxis
-                domain={[170, 200]}
-                ticks={[170, 175, 180, 185, 190, 195, 200]}
-                stroke="#94a3b8"
-                tick={{ fill: '#94a3b8', fontSize: 12 }}
-                tickFormatter={(v) => String(Math.round(Number(v)))}
-              />
-              <Tooltip content={<MetricTooltip suffix=" lb" />} />
-              <Line
-                type="monotone"
-                dataKey="weight"
-                stroke="#22c55e"
-                strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
+      <ProgressChartSection
+        title="Weight trend"
+        data={chartData}
+        dataKey="weight"
+        stroke="#22c55e"
+        suffix=" lb"
+        yDomain={[170, 200]}
+        yTicks={[170, 175, 180, 185, 190, 195, 200]}
+        yTickFormatter={(value) => String(Math.round(value))}
+      />
 
-      <section className="card space-y-4">
-        <div className="label">Body fat trend</div>
-        <div className="h-64 min-h-[16rem] w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-              <XAxis
-                dataKey="date"
-                stroke="#94a3b8"
-                tick={{ fill: '#94a3b8', fontSize: 12 }}
-              />
-              <YAxis
-                domain={[14, 21]}
-                ticks={[14, 15, 16, 17, 18, 19, 20, 21]}
-                stroke="#94a3b8"
-                tick={{ fill: '#94a3b8', fontSize: 12 }}
-                tickFormatter={(v) => String(Number(v))}
-              />
-              <Tooltip content={<MetricTooltip suffix="%" />} />
-              <Line
-                type="monotone"
-                dataKey="bodyFat"
-                stroke="#38bdf8"
-                strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
+      <ProgressChartSection
+        title="Body fat trend"
+        data={chartData}
+        dataKey="bodyFat"
+        stroke="#38bdf8"
+        suffix="%"
+        yDomain={[14, 21]}
+        yTicks={[14, 15, 16, 17, 18, 19, 20, 21]}
+        yTickFormatter={(value) => String(value)}
+      />
 
-      <section className="card space-y-4">
-        <div className="label">Water trend</div>
-        <div className="h-64 min-h-[16rem] w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-              <XAxis
-                dataKey="date"
-                stroke="#94a3b8"
-                tick={{ fill: '#94a3b8', fontSize: 12 }}
-              />
-              <YAxis
-                domain={[58, 63]}
-                ticks={[58, 58.5, 59, 59.5, 60, 60.5, 61, 61.5, 62, 62.5, 63]}
-                stroke="#94a3b8"
-                tick={{ fill: '#94a3b8', fontSize: 12 }}
-                tickFormatter={(v) => Number(v).toFixed(1)}
-              />
-              <Tooltip content={<MetricTooltip suffix="%" />} />
-              <Line
-                type="monotone"
-                dataKey="water"
-                stroke="#a78bfa"
-                strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
+      <ProgressChartSection
+        title="Water trend"
+        data={chartData}
+        dataKey="water"
+        stroke="#a78bfa"
+        suffix="%"
+        yDomain={[58, 63]}
+        yTicks={[58, 58.5, 59, 59.5, 60, 60.5, 61, 61.5, 62, 62.5, 63]}
+        yTickFormatter={(value) => value.toFixed(1)}
+      />
 
       <section className="card space-y-4">
         <div className="label">Measurements</div>
@@ -258,11 +263,11 @@ export default function ProgressPage() {
             <table className="min-w-full text-left text-sm text-slate-200">
               <thead className="bg-slate-900/70">
                 <tr>
-                  <th className="px-4 py-3 font-semibold text-slate-300 whitespace-nowrap">Week</th>
-                  <th className="px-4 py-3 font-semibold text-slate-300 whitespace-nowrap">Weight</th>
-                  <th className="px-4 py-3 font-semibold text-slate-300 whitespace-nowrap">Body Fat</th>
-                  <th className="px-4 py-3 font-semibold text-slate-300 whitespace-nowrap">Water</th>
-                  <th className="px-4 py-3 font-semibold text-slate-300 whitespace-nowrap">Waist</th>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold text-slate-300">Week</th>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold text-slate-300">Weight</th>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold text-slate-300">Body Fat</th>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold text-slate-300">Water</th>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold text-slate-300">Waist</th>
                 </tr>
               </thead>
               <tbody>
@@ -271,19 +276,19 @@ export default function ProgressPage() {
                     key={`${row.date}-${row.id ?? index}`}
                     className="border-t border-slate-700 bg-slate-900/30"
                   >
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="whitespace-nowrap px-4 py-3">
                       {formatWeekLabel(row.date)}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="whitespace-nowrap px-4 py-3">
                       {formatValue(row.weight, ' lb')}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="whitespace-nowrap px-4 py-3">
                       {formatValue(row.body_fat, '%')}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="whitespace-nowrap px-4 py-3">
                       {formatValue(row.water_percent, '%')}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="whitespace-nowrap px-4 py-3">
                       {formatValue(row.waist, '"')}
                     </td>
                   </tr>

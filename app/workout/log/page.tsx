@@ -23,6 +23,7 @@ import {
   type WorkoutExerciseEntry,
   type WorkoutProgressState,
 } from '@/lib/workout-log-state'
+import { getMachineAwareSuggestion } from '@/lib/progression-engine'
 
 function createBlankSets() {
   return [
@@ -65,15 +66,6 @@ function parseFirstNumber(value: string) {
   return match ? Number(match[0]) : 0
 }
 
-function parseRepRange(value: string) {
-  const match = value.match(/(\d+)\D+(\d+)/)
-  if (match) {
-    return { low: Number(match[1]), high: Number(match[2]) }
-  }
-  const single = parseFirstNumber(value)
-  return { low: single, high: single }
-}
-
 function getResolvedThursdayCardio(status: string) {
   if (status === 'yes') return 'Skip cardio if basketball happens'
   if (status === 'no') return 'Elliptical – 10 min'
@@ -110,56 +102,6 @@ function getLatestPerformance(logs: ExerciseLogRow[], aliases: string[]) {
     topReps,
     lastDifficulty,
   }
-}
-
-type ExerciseCategory =
-  | 'lowerCompound'
-  | 'upperCompound'
-  | 'accessory'
-  | 'isolation'
-
-function getExerciseCategory(exerciseName: string): ExerciseCategory {
-  const name = exerciseName.toLowerCase()
-
-  if (name.includes('leg press') || name.includes('hack squat')) {
-    return 'lowerCompound'
-  }
-
-  if (
-    name.includes('press machine') ||
-    name.includes('pulldown') ||
-    name.includes('row') ||
-    name.includes('shoulder press')
-  ) {
-    return 'upperCompound'
-  }
-
-  if (
-    name.includes('seated hamstring curl') ||
-    name.includes('hip thrust') ||
-    name.includes('back extension') ||
-    name.includes('assisted dip')
-  ) {
-    return 'accessory'
-  }
-
-  return 'isolation'
-}
-
-function getProgressionIncrement(category: ExerciseCategory) {
-  if (category === 'lowerCompound') return 10
-  return 5
-}
-
-function getRampOffsets(category: ExerciseCategory) {
-  if (category === 'lowerCompound') return [20, 10, 0]
-  if (category === 'upperCompound') return [10, 0, 0]
-  return [0, 0, 0]
-}
-
-function buildSetSuggestions(workingWeight: number, category: ExerciseCategory): number[] {
-  const offsets = getRampOffsets(category)
-  return offsets.map((offset) => Math.max(0, workingWeight - offset))
 }
 
 function getSuggestedCardioMinutes(
@@ -430,36 +372,13 @@ export default function WorkoutLogPage() {
 
     if (!latest || !latest.topWeight) return null
 
-    const category = getExerciseCategory(currentEntry.name)
-    const repRange = parseRepRange(currentTarget.reps)
-    const increment = getProgressionIncrement(category)
-
-    let workingWeight = latest.topWeight
-    let note = 'Using last session as a guide'
-
-    const hitTopOfRange = latest.topReps >= repRange.high
-    const belowRange = latest.topReps < repRange.low
-    const withinRangeNotReady = latest.topReps >= repRange.low && latest.topReps < repRange.high
-
-    if (
-      (latest.lastDifficulty === 'Easy' || latest.lastDifficulty === 'Good') &&
-      hitTopOfRange
-    ) {
-      workingWeight = latest.topWeight + increment
-      note = 'Increased based on prior logs'
-    } else if (latest.lastDifficulty === 'Too Hard' && belowRange) {
-      workingWeight = Math.max(0, latest.topWeight - increment)
-      note = 'Adjusted down based on prior logs'
-    } else if (withinRangeNotReady) {
-      workingWeight = latest.topWeight
-      note = 'Holding based on prior reps'
-    }
-
-    return {
-      workingWeight,
-      setWeights: buildSetSuggestions(workingWeight, category),
-      note,
-    }
+    return getMachineAwareSuggestion({
+      exerciseName: currentEntry.name,
+      targetRepRange: currentTarget.reps,
+      topWeight: latest.topWeight,
+      topReps: latest.topReps,
+      lastDifficulty: latest.lastDifficulty,
+    })
   }, [currentEntry, currentTarget, historyLogs])
 
   function updateSetValue(setIndex: number, field: 'weight' | 'reps', value: string) {

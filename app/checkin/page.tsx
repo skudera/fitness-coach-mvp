@@ -7,14 +7,15 @@ import {
   saveWeeklyBasketball,
   getWeekStartDate,
   getWeeklySettings,
+  loadBodyMetricsHistoryFromSupabase,
 } from '@/lib/storage-supabase'
 
 export default function CheckInPage() {
   const router = useRouter()
 
-  const [weight, setWeight] = useState('189.8')
-  const [bodyFat, setBodyFat] = useState('19.0')
-  const [water, setWater] = useState('59.2')
+  const [weight, setWeight] = useState('')
+  const [bodyFat, setBodyFat] = useState('')
+  const [water, setWater] = useState('')
   const [waist, setWaist] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
@@ -22,24 +23,39 @@ export default function CheckInPage() {
   const [error, setError] = useState('')
   const [basketball, setBasketball] = useState('unsure')
   const [loadingWeekly, setLoadingWeekly] = useState(true)
+  const [loadingMetrics, setLoadingMetrics] = useState(true)
 
   useEffect(() => {
-    async function loadWeeklySetting() {
+    async function loadInitialData() {
       try {
-        const weekStart = getWeekStartDate()
-        const weekly = await getWeeklySettings(weekStart)
+        const [history, weekly] = await Promise.all([
+          loadBodyMetricsHistoryFromSupabase(),
+          getWeeklySettings(getWeekStartDate()),
+        ])
+
+        const latest = [...history]
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .find((row) => row.weight != null || row.body_fat != null || row.water_percent != null || row.waist != null)
+
+        if (latest) {
+          setWeight(latest.weight != null ? String(latest.weight) : '')
+          setBodyFat(latest.body_fat != null ? String(latest.body_fat) : '')
+          setWater(latest.water_percent != null ? String(latest.water_percent) : '')
+          setWaist(latest.waist != null ? String(latest.waist) : '')
+        }
 
         if (weekly?.basketball_status) {
           setBasketball(weekly.basketball_status)
         }
       } catch (err) {
-        console.error('Could not load weekly settings', err)
+        console.error('Could not load check-in defaults', err)
       } finally {
+        setLoadingMetrics(false)
         setLoadingWeekly(false)
       }
     }
 
-    loadWeeklySetting()
+    loadInitialData()
   }, [])
 
   async function onSave() {
@@ -87,12 +103,18 @@ export default function CheckInPage() {
 
       <section className="card space-y-4">
         <div className="grid grid-cols-2 gap-3">
+          {loadingMetrics ? (
+            <p className="col-span-2 text-sm text-slate-400">Loading your latest check-in values…</p>
+          ) : null}
           <div>
             <div className="label mb-2">Weight</div>
             <input
               value={weight}
+              inputMode="decimal"
               onChange={(e) => setWeight(e.target.value)}
               className="w-full rounded-2xl border border-slate-700 bg-slate-900/40 px-4 py-3 text-white outline-none"
+              type="number"
+              step="0.1"
               placeholder="189.8"
             />
           </div>
@@ -101,8 +123,11 @@ export default function CheckInPage() {
             <div className="label mb-2">Body fat %</div>
             <input
               value={bodyFat}
+              inputMode="decimal"
               onChange={(e) => setBodyFat(e.target.value)}
               className="w-full rounded-2xl border border-slate-700 bg-slate-900/40 px-4 py-3 text-white outline-none"
+              type="number"
+              step="0.1"
               placeholder="19.0"
             />
           </div>
@@ -111,8 +136,11 @@ export default function CheckInPage() {
             <div className="label mb-2">Water %</div>
             <input
               value={water}
+              inputMode="decimal"
               onChange={(e) => setWater(e.target.value)}
               className="w-full rounded-2xl border border-slate-700 bg-slate-900/40 px-4 py-3 text-white outline-none"
+              type="number"
+              step="0.1"
               placeholder="59.2"
             />
           </div>
@@ -121,8 +149,11 @@ export default function CheckInPage() {
             <div className="label mb-2">Waist (if due)</div>
             <input
               value={waist}
+              inputMode="decimal"
               onChange={(e) => setWaist(e.target.value)}
               className="w-full rounded-2xl border border-slate-700 bg-slate-900/40 px-4 py-3 text-white outline-none"
+              type="number"
+              step="0.1"
               placeholder="38.5"
             />
           </div>
