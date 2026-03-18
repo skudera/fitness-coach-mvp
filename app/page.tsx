@@ -27,6 +27,12 @@ type BodyMetricRow = {
   notes?: string | null
 }
 
+type CoachContent = {
+  title: string
+  body: string
+  bullets?: string[]
+}
+
 function getGreeting() {
   const hour = new Date().getHours()
   if (hour < 12) return 'Good morning'
@@ -60,58 +66,6 @@ function getTodayPlan() {
 function parseLocalDate(dateString: string) {
   const [year, month, day] = dateString.split('-').map(Number)
   return new Date(year, month - 1, day)
-}
-
-function buildCoachInsight(params: {
-  latestMetric: BodyMetricRow | null
-  oldestMetric: BodyMetricRow | null
-  lastMeaningfulWorkout: CompletedSessionRow | null
-  streakCount: number
-}) {
-  const { latestMetric, oldestMetric, lastMeaningfulWorkout, streakCount } = params
-
-  const weightDelta =
-    latestMetric?.weight != null && oldestMetric?.weight != null
-      ? Number((latestMetric.weight - oldestMetric.weight).toFixed(1))
-      : null
-
-  const bodyFatDelta =
-    latestMetric?.body_fat != null && oldestMetric?.body_fat != null
-      ? Number((latestMetric.body_fat - oldestMetric.body_fat).toFixed(1))
-      : null
-
-  if (weightDelta != null && weightDelta < 0 && streakCount >= 2) {
-    return {
-      title: 'Coach Insight',
-      body: `Weight is down ${Math.abs(weightDelta)} lbs since you started. Keep stacking workouts—momentum is building.`,
-    }
-  }
-
-  if (bodyFatDelta != null && bodyFatDelta < 0) {
-    return {
-      title: 'Coach Insight',
-      body: `Body fat is down ${Math.abs(bodyFatDelta)}% from your baseline. Stay steady this week.`,
-    }
-  }
-
-  if (streakCount >= 3) {
-    return {
-      title: 'Coach Insight',
-      body: `You’re on a ${streakCount}-workout streak. Consistency like this is what drives real progress.`,
-    }
-  }
-
-  if (lastMeaningfulWorkout) {
-    return {
-      title: 'Coach Insight',
-      body: `Your last completed workout was on ${lastMeaningfulWorkout.date}. Keep up the consistency—you’re getting closer to your goal.`,
-    }
-  }
-
-  return {
-    title: 'Coach Insight',
-    body: `You’ve got the system in place. Stay consistent and let the numbers start working in your favor.`,
-  }
 }
 
 function getCurrentWeekdays() {
@@ -156,6 +110,145 @@ function getWorkoutStreak(sessionDates: string[]) {
   }
 
   return streak
+}
+
+function buildCoachContent(params: {
+  latestMetric: BodyMetricRow | null
+  oldestMetric: BodyMetricRow | null
+  todayCompletedSession: CompletedSessionRow | null
+  todayCheckIn: BodyMetricRow | null
+  lastMeaningfulWorkout: CompletedSessionRow | null
+  streakCount: number
+  basketballStatus: string
+  todayPlan: { label: string; focus: string; duration: string }
+  loading: boolean
+}): CoachContent {
+  const {
+    latestMetric,
+    oldestMetric,
+    todayCompletedSession,
+    todayCheckIn,
+    lastMeaningfulWorkout,
+    streakCount,
+    basketballStatus,
+    todayPlan,
+    loading,
+  } = params
+
+  const isMonday = new Date().getDay() === 1
+  const isThursday = new Date().getDay() === 4
+  const nextWorkoutLabel = getTomorrowWorkoutLabel()
+
+  if (loading) {
+    return {
+      title: 'Coach',
+      body: 'Loading coaching guidance…',
+    }
+  }
+
+  const weightDelta =
+    latestMetric?.weight != null && oldestMetric?.weight != null
+      ? Number((latestMetric.weight - oldestMetric.weight).toFixed(1))
+      : null
+
+  const bodyFatDelta =
+    latestMetric?.body_fat != null && oldestMetric?.body_fat != null
+      ? Number((latestMetric.body_fat - oldestMetric.body_fat).toFixed(1))
+      : null
+
+  if (todayCompletedSession) {
+    return {
+      title: 'Coach',
+      body: `Today’s workout is already complete. Nice job protecting the routine and keeping momentum moving.`,
+      bullets: [
+        'Hydrate well and keep the rest of the day simple.',
+        'Review the workout if you want to double-check sets, reps, and notes.',
+        `Next up: ${nextWorkoutLabel}.`,
+      ],
+    }
+  }
+
+  if (isMonday && !todayCheckIn) {
+    return {
+      title: 'Coach',
+      body: `Before you start chasing the week, lock in your Monday check-in. A quick body-metrics update keeps your progress honest and easier to interpret.`,
+      bullets: [
+        'Complete the Monday check-in near the top of the dashboard.',
+        `Then start ${todayPlan.focus}.`,
+        'Keep the workout simple—good logging beats overthinking.',
+      ],
+    }
+  }
+
+  if (isThursday && basketballStatus === 'yes') {
+    return {
+      title: 'Coach',
+      body: `Basketball is marked in play for Thursday, so today should stay focused on the plan without adding unnecessary extra fatigue.`,
+      bullets: [
+        'Finish the planned work first.',
+        'Do not chase extra volume just because you feel good.',
+        'Save your legs and joints for basketball if that is still on tonight.',
+      ],
+    }
+  }
+
+  if (weightDelta != null && weightDelta < 0 && streakCount >= 2) {
+    return {
+      title: 'Coach',
+      body: `Weight is down ${Math.abs(weightDelta)} lbs from your earliest logged checkpoint, and your current streak is ${streakCount}. That’s meaningful momentum.`,
+      bullets: [
+        `Today’s focus: ${todayPlan.focus}.`,
+        `Planned duration: ${todayPlan.duration}.`,
+        'Keep logging cleanly and let consistency keep doing the work.',
+      ],
+    }
+  }
+
+  if (bodyFatDelta != null && bodyFatDelta < 0) {
+    return {
+      title: 'Coach',
+      body: `Body fat is down ${Math.abs(bodyFatDelta)}% from your baseline. Stay steady and let consistency keep doing the work.`,
+      bullets: [
+        `Today’s focus: ${todayPlan.focus}.`,
+        'Do not overcomplicate the session.',
+        'Complete the plan before worrying about extras.',
+      ],
+    }
+  }
+
+  if (streakCount >= 3) {
+    return {
+      title: 'Coach',
+      body: `You’re on a ${streakCount}-workout streak. Today is less about hype and more about protecting the streak with another solid, clean session.`,
+      bullets: [
+        `Today’s focus: ${todayPlan.focus}.`,
+        'Accurate set logging matters more than forcing progression.',
+        'Complete the planned workout before worrying about anything extra.',
+      ],
+    }
+  }
+
+  if (lastMeaningfulWorkout) {
+    return {
+      title: 'Coach',
+      body: `The priority today is straightforward: get back in, complete the planned session, and keep the routine moving.`,
+      bullets: [
+        `Planned session: ${todayPlan.focus}.`,
+        `Expected duration: ${todayPlan.duration}.`,
+        'Use the Start Workout button near the top and keep the flow simple.',
+      ],
+    }
+  }
+
+  return {
+    title: 'Coach',
+    body: `You’ve got the structure in place. Start stacking workouts and the progress data will begin to tell the story.`,
+    bullets: [
+      `Today’s focus: ${todayPlan.focus}.`,
+      'Focus on completion, not perfection.',
+      'Once a few workouts are logged, the coaching gets more useful.',
+    ],
+  }
 }
 
 export default function HomePage() {
@@ -246,15 +339,30 @@ export default function HomePage() {
 
   const streakCount = useMemo(() => getWorkoutStreak(meaningfulSessionDates), [meaningfulSessionDates])
 
-  const coachInsight = useMemo(
+  const coach = useMemo(
     () =>
-      buildCoachInsight({
+      buildCoachContent({
         latestMetric,
         oldestMetric,
+        todayCompletedSession,
+        todayCheckIn,
         lastMeaningfulWorkout,
         streakCount,
+        basketballStatus,
+        todayPlan,
+        loading,
       }),
-    [latestMetric, oldestMetric, lastMeaningfulWorkout, streakCount]
+    [
+      latestMetric,
+      oldestMetric,
+      todayCompletedSession,
+      todayCheckIn,
+      lastMeaningfulWorkout,
+      streakCount,
+      basketballStatus,
+      todayPlan,
+      loading,
+    ]
   )
 
   return (
@@ -323,11 +431,52 @@ export default function HomePage() {
         </Link>
       </section>
 
+      <section className="card">
+        <div className="label">Today</div>
+
+        {todayCompletedSession ? (
+          <>
+            <div className="mt-3 text-[1.45rem] font-semibold leading-tight text-white">
+              {todayPlan.label}: {todayPlan.focus}
+            </div>
+            <div className="mt-3 text-[1rem] font-semibold text-emerald-400">
+              Completed ✅
+            </div>
+            <div className="mt-3 text-[0.95rem] text-slate-300">
+              {todayCompletedSession.duration_minutes} min actual
+            </div>
+            <div className="mt-3 text-[0.9rem] text-slate-400">
+              Next: {nextWorkoutLabel}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-3 text-[1.6rem] font-semibold leading-tight text-white">
+              {todayPlan.label}: {todayPlan.focus}
+            </div>
+            <div className="mt-4 text-[1rem] text-slate-300">
+              {todayPlan.duration}
+            </div>
+          </>
+        )}
+      </section>
+
       <section className="card space-y-4">
-        <div className="label">{coachInsight.title}</div>
-        <p className="text-[1rem] leading-8 text-slate-100">
-          {loading ? 'Loading insight…' : coachInsight.body}
-        </p>
+        <div className="label">{coach.title}</div>
+        <p className="text-[1rem] leading-8 text-slate-100">{coach.body}</p>
+
+        {coach.bullets?.length ? (
+          <>
+            <div className="label pt-2">Focus today</div>
+            <ul className="space-y-3 pl-6 text-[0.95rem] leading-7 text-slate-200">
+              {coach.bullets.map((bullet, index) => (
+                <li key={`${bullet}-${index}`} className="list-disc">
+                  {bullet}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
       </section>
 
       <section className="grid grid-cols-3 gap-3">
@@ -345,100 +494,32 @@ export default function HomePage() {
         />
       </section>
 
-      <section className="grid grid-cols-2 gap-4">
+      <section className="grid grid-cols-3 gap-4">
         <div className="card">
           <div className="label">Weekly mode</div>
-          <div className="mt-3 text-[1.7rem] font-semibold text-white">
-            recomp steady
-          </div>
+          <div className="mt-3 text-[1.2rem] font-semibold text-white">recomp steady</div>
         </div>
 
         <div className="card">
-          <div className="label">Basketball Thursday</div>
-          <div className="mt-3 text-[1.6rem] font-semibold text-white capitalize">
+          <div className="label">Thursday basketball</div>
+          <div className="mt-3 text-[1.2rem] font-semibold capitalize text-white">
             {basketballStatus}
           </div>
         </div>
 
         <div className="card">
-          <div className="label">Latest weight</div>
-          <div className="mt-3 text-[1.7rem] font-semibold text-white">
-            {loading ? '...' : latestMetric?.weight != null ? `${latestMetric.weight} lbs` : '—'}
-          </div>
-          <div className="mt-3 text-[0.9rem] text-slate-400">
-            {loading ? 'Loading…' : latestMetric?.date ?? 'No date'}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="label">Body fat</div>
-          <div className="mt-3 text-[1.7rem] font-semibold text-white">
-            {loading ? '...' : latestMetric?.body_fat != null ? `${latestMetric.body_fat}%` : '—'}
-          </div>
-          <div className="mt-3 text-[0.9rem] text-slate-400">
-            Latest loaded checkpoint
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="label">Today</div>
-
-          {todayCompletedSession ? (
-            <>
-              <div className="mt-3 text-[1.45rem] font-semibold leading-tight text-white">
-                {todayPlan.label}: {todayPlan.focus}
-              </div>
-              <div className="mt-3 text-[1rem] font-semibold text-emerald-400">
-                Completed ✅
-              </div>
-              <div className="mt-3 text-[0.95rem] text-slate-300">
-                {todayCompletedSession.duration_minutes} min actual
-              </div>
-              <div className="mt-3 text-[0.9rem] text-slate-400">
-                Next: {nextWorkoutLabel}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="mt-3 text-[1.7rem] font-semibold leading-tight text-white">
-                {todayPlan.label}: {todayPlan.focus}
-              </div>
-              <div className="mt-4 text-[1rem] text-slate-300">
-                {todayPlan.duration}
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="card">
           <div className="label">Last workout</div>
-          <div className="mt-3 text-[1.7rem] font-semibold text-white">
+          <div className="mt-3 text-[1.2rem] font-semibold text-white">
             {loading
               ? '...'
               : lastMeaningfulWorkout?.duration_minutes != null
                 ? `${lastMeaningfulWorkout.duration_minutes} min`
                 : 'No workout yet'}
           </div>
-          <div className="mt-4 text-[1rem] text-slate-300">
+          <div className="mt-3 text-[0.9rem] text-slate-400">
             {loading ? 'Loading…' : lastMeaningfulWorkout?.date ?? 'No completed session'}
           </div>
         </div>
-      </section>
-
-      <section className="card space-y-4">
-        <div className="label">Coach note</div>
-
-        <p className="text-[1rem] leading-8 text-slate-100">
-          Strength is improving and weight is trending down. Keep cardio steady this week.
-        </p>
-
-        <div className="label pt-2">This week&apos;s adjustments</div>
-
-        <ul className="space-y-3 pl-6 text-[0.95rem] leading-7 text-slate-200">
-          <li className="list-disc">Increase lateral raise weight from 20 to 25 lbs.</li>
-          <li className="list-disc">Thursday cardio restored because basketball is not planned.</li>
-          <li className="list-disc">Friday sauna changed to optional only after all planned work is finished.</li>
-        </ul>
       </section>
     </div>
   )
