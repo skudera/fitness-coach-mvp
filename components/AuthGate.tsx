@@ -64,12 +64,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       return
     }
 
-    const isLocalhost =
-      typeof window !== 'undefined' && window.location.hostname === 'localhost'
-
-    const redirectTo = isLocalhost
-      ? 'http://localhost:3000'
-      : 'https://fitness-coach-bfibs3bs5-skuderas-projects.vercel.app'
+    const redirectTo =
+      typeof window !== 'undefined' ? window.location.origin : undefined
 
     const { error } = await supabase.auth.signInWithOtp({
       email: normalizedEmail,
@@ -85,7 +81,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       return
     }
 
-    setMessage(`Magic link sent. Open your email and tap the link to sign in.`)
+    setMessage('Magic link sent. Open your email and tap the link to sign in.')
   }
 
   if (loading) {
