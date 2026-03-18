@@ -1,9 +1,8 @@
-import { supabase } from './supabase'
-
-const DEFAULT_USER_ID = process.env.NEXT_PUBLIC_DEFAULT_USER_ID!
+import { requireUserId, supabase } from './supabase'
 
 export type BodyMetricRow = {
   id?: string
+  user_id?: string
   date: string
   weight?: number | null
   body_fat?: number | null
@@ -45,6 +44,7 @@ export type WorkoutRow = {
 
 export type ExerciseLogRow = {
   id?: string
+  user_id?: string
   workout_id: string
   exercise_name: string
   exercise_index?: number | null
@@ -53,11 +53,13 @@ export type ExerciseLogRow = {
   reps?: number | null
   difficulty?: string | null
   discomfort?: string | null
+  calibration_feedback?: string | null
   notes?: string | null
   created_at?: string
 }
 
 export type EquipmentPreferences = {
+  user_id?: string
   pressing_preference?: string | null
   row_preference?: string | null
   leg_press_preference?: string | null
@@ -109,10 +111,12 @@ export function getWeekStartDate() {
 }
 
 export async function loadBodyMetricsHistoryFromSupabase(): Promise<BodyMetricRow[]> {
+  const userId = await requireUserId()
+
   const { data, error } = await supabase
     .from('body_metrics')
     .select('*')
-    .eq('user_id', DEFAULT_USER_ID)
+    .eq('user_id', userId)
     .order('date', { ascending: true })
 
   if (error) {
@@ -124,12 +128,13 @@ export async function loadBodyMetricsHistoryFromSupabase(): Promise<BodyMetricRo
 }
 
 export async function loadTodayCheckInFromSupabase(date?: string): Promise<BodyMetricRow | null> {
+  const userId = await requireUserId()
   const targetDate = date ?? getLocalDateString()
 
   const { data, error } = await supabase
     .from('body_metrics')
     .select('*')
-    .eq('user_id', DEFAULT_USER_ID)
+    .eq('user_id', userId)
     .eq('date', targetDate)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -154,11 +159,13 @@ export async function saveBodyMetricToSupabase(payload: {
   bicep?: number | null
   notes?: string | null
 }) {
+  const userId = await requireUserId()
+
   const { data, error } = await supabase
     .from('body_metrics')
     .insert([
       {
-        user_id: DEFAULT_USER_ID,
+        user_id: userId,
         ...payload,
       },
     ])
@@ -198,11 +205,13 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
   exercise_order?: string[]
   exercise_logs: ExerciseSetLog[]
 }) {
+  const userId = await requireUserId()
+
   const { data: workout, error: workoutError } = await supabase
     .from('workouts')
     .insert([
       {
-        user_id: DEFAULT_USER_ID,
+        user_id: userId,
         date: payload.date,
         day_name: payload.day_name,
         focus: payload.focus,
@@ -234,6 +243,7 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
       .from('exercise_logs')
       .insert(
         payload.exercise_logs.map((log) => ({
+          user_id: userId,
           workout_id: workout.id,
           ...log,
         }))
@@ -249,7 +259,7 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
     .from('completed_sessions')
     .insert([
       {
-        user_id: DEFAULT_USER_ID,
+        user_id: userId,
         workout_id: workout.id,
         date: payload.date,
         duration_minutes: payload.actual_minutes ?? null,
@@ -267,10 +277,12 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
 }
 
 export async function loadCompletedSessionsFromSupabase(): Promise<CompletedSessionRow[]> {
+  const userId = await requireUserId()
+
   const { data, error } = await supabase
     .from('completed_sessions')
     .select('*')
-    .eq('user_id', DEFAULT_USER_ID)
+    .eq('user_id', userId)
     .order('date', { ascending: false })
     .order('created_at', { ascending: false })
 
@@ -283,9 +295,12 @@ export async function loadCompletedSessionsFromSupabase(): Promise<CompletedSess
 }
 
 export async function getWeeklySettings(weekStart: string) {
+  const userId = await requireUserId()
+
   const { data, error } = await supabase
     .from('weekly_settings')
     .select('*')
+    .eq('user_id', userId)
     .eq('week_start', weekStart)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -300,14 +315,20 @@ export async function getWeeklySettings(weekStart: string) {
 }
 
 export async function saveWeeklyBasketball(weekStart: string, status: string) {
+  const userId = await requireUserId()
+
   const { error } = await supabase
     .from('weekly_settings')
-    .insert([
-      {
-        week_start: weekStart,
-        basketball_status: status,
-      },
-    ])
+    .upsert(
+      [
+        {
+          user_id: userId,
+          week_start: weekStart,
+          basketball_status: status,
+        },
+      ],
+      { onConflict: 'user_id,week_start' }
+    )
 
   if (error) {
     console.error('weekly basketball save error', error)
@@ -318,10 +339,12 @@ export async function loadWorkoutHistoryBundleFromSupabase(): Promise<{
   workouts: WorkoutRow[]
   logs: ExerciseLogRow[]
 }> {
+  const userId = await requireUserId()
+
   const { data: workoutsData, error: workoutsError } = await supabase
     .from('workouts')
     .select('*')
-    .eq('user_id', DEFAULT_USER_ID)
+    .eq('user_id', userId)
     .order('date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(30)
@@ -341,6 +364,7 @@ export async function loadWorkoutHistoryBundleFromSupabase(): Promise<{
   const { data: logsData, error: logsError } = await supabase
     .from('exercise_logs')
     .select('*')
+    .eq('user_id', userId)
     .in('workout_id', workoutIds)
     .order('exercise_index', { ascending: true })
     .order('set_number', { ascending: true })
@@ -361,11 +385,13 @@ export async function loadExerciseLogHistoryFromSupabase(
 ): Promise<ExerciseLogRow[]> {
   if (!exerciseNames.length) return []
 
+  const userId = await requireUserId()
   const uniqueNames = [...new Set(exerciseNames)]
 
   const { data, error } = await supabase
     .from('exercise_logs')
     .select('*')
+    .eq('user_id', userId)
     .in('exercise_name', uniqueNames)
     .order('created_at', { ascending: false })
     .limit(300)
@@ -379,9 +405,12 @@ export async function loadExerciseLogHistoryFromSupabase(
 }
 
 export async function loadEquipmentPreferences(): Promise<EquipmentPreferences | null> {
+  const userId = await requireUserId()
+
   const { data, error } = await supabase
     .from('user_preferences')
     .select('*')
+    .eq('user_id', userId)
     .limit(1)
     .maybeSingle()
 
@@ -394,9 +423,19 @@ export async function loadEquipmentPreferences(): Promise<EquipmentPreferences |
 }
 
 export async function saveEquipmentPreferences(prefs: EquipmentPreferences) {
+  const userId = await requireUserId()
+
   const { error } = await supabase
     .from('user_preferences')
-    .upsert([prefs])
+    .upsert(
+      [
+        {
+          user_id: userId,
+          ...prefs,
+        },
+      ],
+      { onConflict: 'user_id' }
+    )
 
   if (error) {
     console.error('Error saving preferences', error)
