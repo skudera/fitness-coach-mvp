@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
+import type { Route } from 'next'
 import { supabase } from '@/lib/supabase'
 
 type MoreTileProps = {
-  href: string
+  href: Route
   title: string
   description: string
 }
