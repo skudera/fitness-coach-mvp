@@ -240,9 +240,9 @@ export default function HomePage() {
     }))
   }, [meaningfulSessionDates])
 
-const perfectWeek = useMemo(() => {
-  return weekProgress.every((day) => day.completed)
-}, [weekProgress])
+  const perfectWeek = useMemo(() => {
+    return weekProgress.every((day) => day.completed)
+  }, [weekProgress])
 
   const streakCount = useMemo(() => getWorkoutStreak(meaningfulSessionDates), [meaningfulSessionDates])
 
@@ -291,18 +291,36 @@ const perfectWeek = useMemo(() => {
           </div>
         </div>
 
-<div className="pt-2">
-  <div className="label">Streak</div>
-  <div className="mt-2 text-[1.3rem] font-semibold text-white">
-    {loading ? '...' : `${streakCount} workout${streakCount === 1 ? '' : 's'} in a row`}
-  </div>
+        <div className="pt-2">
+          <div className="label">Streak</div>
+          <div className="mt-2 text-[1.3rem] font-semibold text-white">
+            {loading ? '...' : `${streakCount} workout${streakCount === 1 ? '' : 's'} in a row`}
+          </div>
 
-  {perfectWeek && !loading ? (
-    <div className="mt-3 text-[1rem] font-semibold text-emerald-400">
-      Perfect week: 5 for 5 🔥
-    </div>
-  ) : null}
-</div>
+          {perfectWeek && !loading ? (
+            <div className="mt-3 text-[1rem] font-semibold text-emerald-400">
+              Perfect week: 5 for 5 🔥
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-4">
+        <Link
+          href="/checkin"
+          className={`block w-full rounded-[1.75rem] px-5 py-5 text-center text-[1rem] font-semibold transition ${
+            todayCheckIn ? 'bg-slate-800 text-slate-100 hover:bg-slate-700' : 'bg-white text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          {todayCheckIn ? 'Check-In Complete ✅' : 'Monday Check-In'}
+        </Link>
+
+        <Link
+          href="/workout"
+          className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
+        >
+          {todayCompletedSession ? 'Review Workout' : 'Start Workout'}
+        </Link>
       </section>
 
       <section className="card space-y-4">
@@ -398,8 +416,8 @@ const perfectWeek = useMemo(() => {
             {loading
               ? '...'
               : lastMeaningfulWorkout?.duration_minutes != null
-              ? `${lastMeaningfulWorkout.duration_minutes} min`
-              : 'No workout yet'}
+                ? `${lastMeaningfulWorkout.duration_minutes} min`
+                : 'No workout yet'}
           </div>
           <div className="mt-4 text-[1rem] text-slate-300">
             {loading ? 'Loading…' : lastMeaningfulWorkout?.date ?? 'No completed session'}
@@ -421,24 +439,6 @@ const perfectWeek = useMemo(() => {
           <li className="list-disc">Thursday cardio restored because basketball is not planned.</li>
           <li className="list-disc">Friday sauna changed to optional only after all planned work is finished.</li>
         </ul>
-      </section>
-
-      <section className="grid grid-cols-2 gap-4">
-        <Link
-          href="/checkin"
-          className={`block w-full rounded-[1.75rem] px-5 py-5 text-center text-[1rem] font-semibold transition ${
-            todayCheckIn ? 'bg-slate-800 text-slate-100 hover:bg-slate-700' : 'bg-white text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          {todayCheckIn ? 'Check-In Complete ✅' : 'Monday Check-In'}
-        </Link>
-
-        <Link
-          href="/workout"
-          className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
-        >
-          {todayCompletedSession ? 'Review Workout' : 'Start Workout'}
-        </Link>
       </section>
     </div>
   )
