@@ -60,12 +60,50 @@ function isCableLateralRaise(exerciseName: string) {
   return exerciseName.toLowerCase().includes('cable lateral raise')
 }
 
+function isHalfStepCableStackExercise(exerciseName: string) {
+  const name = exerciseName.toLowerCase()
+
+  return (
+    name.includes('face pull') ||
+    name.includes('triceps pressdown') ||
+    name.includes('cable curl')
+  )
+}
+
+function getHalfStepCableWeightAtIndex(index: number) {
+  return 7.5 + index * 5
+}
+
+function snapToHalfStepCableWeight(value: number) {
+  if (value <= 0) return 0
+  if (value <= 7.5) return 7.5
+
+  const index = Math.round((value - 7.5) / 5)
+  return getHalfStepCableWeightAtIndex(index)
+}
+
+function getNextHalfStepCableWeight(weight: number) {
+  if (weight < 7.5) return 7.5
+  const index = Math.floor((weight - 7.5) / 5) + 1
+  return getHalfStepCableWeightAtIndex(index)
+}
+
+function getPreviousHalfStepCableWeight(weight: number) {
+  if (weight <= 7.5) return 7.5
+  const index = Math.ceil((weight - 7.5) / 5) - 1
+  return Math.max(7.5, getHalfStepCableWeightAtIndex(index))
+}
+
 function getFixedStep(exerciseName: string): number | null {
   const name = exerciseName.toLowerCase()
 
   if (name.includes('lat pulldown')) return 15
   if (name.includes('seated row machine')) return 15
   if (name.includes('chest press machine')) return 10
+  if (name.includes('seated hamstring curl')) return 10
+  if (name.includes('leg extension')) return 10
+  if (name.includes('ab machine')) return 10
+  if (name.includes('calf raise')) return 10
   if (name.includes('cable')) return 5
 
   return null
@@ -115,6 +153,10 @@ function getNextAllowedWeight(
     return getCableLateralRaiseNext(currentWeight)
   }
 
+  if (isHalfStepCableStackExercise(exerciseName)) {
+    return getNextHalfStepCableWeight(currentWeight)
+  }
+
   const fixedStep = getFixedStep(exerciseName)
   if (fixedStep) {
     return currentWeight + fixedStep
@@ -132,6 +174,10 @@ function getPreviousAllowedWeight(
 ) {
   if (isCableLateralRaise(exerciseName)) {
     return getCableLateralRaisePrevious(currentWeight)
+  }
+
+  if (isHalfStepCableStackExercise(exerciseName)) {
+    return getPreviousHalfStepCableWeight(currentWeight)
   }
 
   const fixedStep = getFixedStep(exerciseName)
@@ -177,6 +223,10 @@ function buildSetSuggestions(
       return raw
     }
 
+    if (isHalfStepCableStackExercise(exerciseName)) {
+      return snapToHalfStepCableWeight(raw)
+    }
+
     const fixedStep = getFixedStep(exerciseName)
     if (fixedStep) {
       return Math.max(0, roundToNearestFive(raw))
@@ -186,8 +236,14 @@ function buildSetSuggestions(
   })
 }
 
-function getIncrementText(exerciseName: string, category: ExerciseCategory, topReps: number, repHigh: number) {
+function getIncrementText(
+  exerciseName: string,
+  category: ExerciseCategory,
+  topReps: number,
+  repHigh: number
+) {
   if (isCableLateralRaise(exerciseName)) return 'machine-aware progression ladder'
+  if (isHalfStepCableStackExercise(exerciseName)) return '7.5 lb start, then 5 lb cable ladder'
 
   const fixedStep = getFixedStep(exerciseName)
   if (fixedStep) return `${fixedStep} lb stack jump`
