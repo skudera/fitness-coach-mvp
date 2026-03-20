@@ -78,7 +78,7 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
           'Leg Press (45° Plate Loaded)',
           'Seated Hamstring Curl',
           'Leg Extension',
-          'Seated Calf Raise',
+          'Rotary Calf',
           'Abductor Machine',
           'Ab Machine',
         ],
@@ -107,18 +107,17 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
     case 5:
       return {
         dayName: 'Friday',
-        focus: 'Lower / Recovery Conditioning',
-        estimatedMinutes: '75 min planned',
+        focus: 'Recovery / Conditioning',
+        estimatedMinutes: '65–70 min planned',
         warmup: '5 min treadmill + mobility',
         exercises: [
-          'Hack Squat',
           'Seated Hamstring Curl',
           'Adductor Machine',
           'Abductor Machine',
-          'Seated Calf Raise',
-          'Cable Crunch',
+          'Rotary Calf',
+          'Ab Machine',
         ],
-        cardio: 'Treadmill incline walk – 12 min',
+        cardio: 'Preferred cardio machine – 15 min',
         restDay: false,
       }
 
@@ -266,7 +265,7 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
     return ['Hack Squat', 'Leg Press (45° Plate Loaded)', 'Smith Machine Squat']
   }
 
-  if (name.includes('seated calf raise')) {
+  if (name.includes('rotary calf')) {
     return ['Leg Press (45° Plate Loaded)', 'Hack Squat', 'Seated Leg Press Machine']
   }
 
@@ -324,7 +323,7 @@ export function getExerciseHistoryAliases(exerciseName: string): string[] {
     'Hack Squat': ['Hack Squat', 'Hack Squat or Leg Press'],
     'Leg Extension': ['Leg Extension'],
     'Seated Hamstring Curl': ['Seated Hamstring Curl', 'Hamstring Curl'],
-    'Seated Calf Raise': ['Seated Calf Raise', 'Calf Raise'],
+    'Rotary Calf': ['Rotary Calf', 'Seated Calf Raise', 'Calf Raise'],
     'Adductor Machine': ['Adductor Machine', 'Adductor / Abductor'],
     'Abductor Machine': ['Abductor Machine', 'Hip Abductor'],
     'Hip Thrust Machine': ['Hip Thrust Machine', 'Glute Bridge Machine'],
