@@ -68,6 +68,22 @@ export type EquipmentPreferences = {
   cardio_preference?: string | null
 }
 
+export type WeeklySettingsRow = {
+  id?: string
+  user_id?: string
+  week_start: string
+  basketball_status?: string | null
+  basketball_timing?: string | null
+  basketball_intensity?: string | null
+  basketball_impact?: string | null
+  basketball_minutes?: number | null
+  basketball_active_calories?: number | null
+  basketball_avg_hr?: number | null
+  friday_sleep_quality?: string | null
+  friday_movement_feel?: string | null
+  created_at?: string
+}
+
 export function getLocalDateString(date = new Date()) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -92,7 +108,7 @@ export function getTomorrowWorkoutLabel() {
     case 4:
       return 'Thursday: Upper Mixed / Basketball'
     case 5:
-      return 'Friday: Lower / Recovery Conditioning'
+      return 'Friday: Lower / Conditioning'
     case 6:
       return 'Saturday: Optional Recovery / Mobility'
     default:
@@ -294,7 +310,7 @@ export async function loadCompletedSessionsFromSupabase(): Promise<CompletedSess
   return (data ?? []) as CompletedSessionRow[]
 }
 
-export async function getWeeklySettings(weekStart: string) {
+export async function getWeeklySettings(weekStart: string): Promise<WeeklySettingsRow | null> {
   const userId = await requireUserId()
 
   const { data, error } = await supabase
@@ -311,27 +327,67 @@ export async function getWeeklySettings(weekStart: string) {
     return null
   }
 
-  return data
+  return (data as WeeklySettingsRow | null) ?? null
 }
 
 export async function saveWeeklyBasketball(weekStart: string, status: string) {
   const userId = await requireUserId()
+  const current = await getWeeklySettings(weekStart)
+
+  const payload: WeeklySettingsRow = {
+    user_id: userId,
+    week_start: weekStart,
+    basketball_status: status,
+    basketball_timing: current?.basketball_timing ?? null,
+    basketball_intensity: current?.basketball_intensity ?? null,
+    basketball_impact: current?.basketball_impact ?? null,
+    basketball_minutes: current?.basketball_minutes ?? null,
+    basketball_active_calories: current?.basketball_active_calories ?? null,
+    basketball_avg_hr: current?.basketball_avg_hr ?? null,
+    friday_sleep_quality: current?.friday_sleep_quality ?? null,
+    friday_movement_feel: current?.friday_movement_feel ?? null,
+  }
 
   const { error } = await supabase
     .from('weekly_settings')
-    .upsert(
-      [
-        {
-          user_id: userId,
-          week_start: weekStart,
-          basketball_status: status,
-        },
-      ],
-      { onConflict: 'user_id,week_start' }
-    )
+    .upsert([payload], { onConflict: 'user_id,week_start' })
 
   if (error) {
     console.error('weekly basketball save error', error)
+  }
+}
+
+export async function saveWeeklyRecoverySettings(
+  weekStart: string,
+  updates: Partial<WeeklySettingsRow>
+) {
+  const userId = await requireUserId()
+  const current = await getWeeklySettings(weekStart)
+
+  const payload: WeeklySettingsRow = {
+    user_id: userId,
+    week_start: weekStart,
+    basketball_status: updates.basketball_status ?? current?.basketball_status ?? 'unsure',
+    basketball_timing: updates.basketball_timing ?? current?.basketball_timing ?? null,
+    basketball_intensity: updates.basketball_intensity ?? current?.basketball_intensity ?? null,
+    basketball_impact: updates.basketball_impact ?? current?.basketball_impact ?? null,
+    basketball_minutes: updates.basketball_minutes ?? current?.basketball_minutes ?? null,
+    basketball_active_calories:
+      updates.basketball_active_calories ?? current?.basketball_active_calories ?? null,
+    basketball_avg_hr: updates.basketball_avg_hr ?? current?.basketball_avg_hr ?? null,
+    friday_sleep_quality:
+      updates.friday_sleep_quality ?? current?.friday_sleep_quality ?? null,
+    friday_movement_feel:
+      updates.friday_movement_feel ?? current?.friday_movement_feel ?? null,
+  }
+
+  const { error } = await supabase
+    .from('weekly_settings')
+    .upsert([payload], { onConflict: 'user_id,week_start' })
+
+  if (error) {
+    console.error('weekly recovery settings save error', error)
+    throw error
   }
 }
 

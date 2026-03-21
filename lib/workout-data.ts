@@ -107,10 +107,11 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
     case 5:
       return {
         dayName: 'Friday',
-        focus: 'Recovery / Conditioning',
-        estimatedMinutes: '65–70 min planned',
-        warmup: '5 min treadmill + mobility',
+        focus: 'Lower / Conditioning',
+        estimatedMinutes: '50–60 min planned',
+        warmup: '5 min treadmill + lower body mobility',
         exercises: [
+          'Hack Squat',
           'Seated Hamstring Curl',
           'Adductor Machine',
           'Abductor Machine',
@@ -194,7 +195,11 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
     name.includes('crunch') ||
     name.includes('mobility') ||
     name.includes('stretch') ||
-    name.includes('plank')
+    name.includes('plank') ||
+    name.includes('bird-dog') ||
+    name.includes('glute bridge') ||
+    name.includes('dead hang') ||
+    name.includes('child')
   ) {
     return { sets: 3, reps: '12–15' }
   }
