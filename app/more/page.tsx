@@ -75,6 +75,12 @@ export default function MorePage() {
             title="History"
             description="Review completed workouts, sets, reps, and notes."
           />
+
+          <MoreTile
+            href="/recovery"
+            title="Evening Recovery"
+            description="Mobility, posture, and reset routine for nights."
+          />
         </div>
       </section>
 
