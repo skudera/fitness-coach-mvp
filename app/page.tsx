@@ -7,11 +7,13 @@ import {
   loadBodyMetricsHistoryFromSupabase,
   loadCompletedSessionsFromSupabase,
   loadTodayCheckInFromSupabase,
+  loadTodayWorkoutRecordFromSupabase,
   getLocalDateString,
   getTomorrowWorkoutLabel,
   getWeeklySettings,
   getWeekStartDate,
   type CompletedSessionRow,
+  type WorkoutRow,
 } from '@/lib/storage-supabase'
 
 type BodyMetricRow = {
@@ -117,6 +119,7 @@ function buildCoachContent(params: {
   oldestMetric: BodyMetricRow | null
   todayCompletedSession: CompletedSessionRow | null
   todayCheckIn: BodyMetricRow | null
+  todayWorkoutRecord: WorkoutRow | null
   lastMeaningfulWorkout: CompletedSessionRow | null
   streakCount: number
   basketballStatus: string
@@ -128,6 +131,7 @@ function buildCoachContent(params: {
     oldestMetric,
     todayCompletedSession,
     todayCheckIn,
+    todayWorkoutRecord,
     lastMeaningfulWorkout,
     streakCount,
     basketballStatus,
@@ -163,6 +167,30 @@ function buildCoachContent(params: {
       bullets: [
         'Hydrate well and keep the rest of the day simple.',
         'Review the workout if you want to double-check sets, reps, and notes.',
+        `Next up: ${nextWorkoutLabel}.`,
+      ],
+    }
+  }
+
+  if (todayWorkoutRecord?.status === 'alternative_completed') {
+    return {
+      title: 'Coach',
+      body: `Today was logged as an alternative workout, which is still a useful way to keep momentum moving when the original plan does not fit.`,
+      bullets: [
+        `Alternative: ${todayWorkoutRecord.alternative_reason?.replaceAll('_', ' ') ?? 'logged'}.`,
+        todayWorkoutRecord.outcome_note ? `Note: ${todayWorkoutRecord.outcome_note}` : 'Good job making the day work.',
+        `Next up: ${nextWorkoutLabel}.`,
+      ],
+    }
+  }
+
+  if (todayWorkoutRecord?.status === 'missed') {
+    return {
+      title: 'Coach',
+      body: `Today’s workout was marked as missed. Log the day honestly, reset cleanly, and be ready for the next scheduled session.`,
+      bullets: [
+        `Reason: ${todayWorkoutRecord.miss_reason?.replaceAll('_', ' ') ?? 'logged'}.`,
+        todayWorkoutRecord.outcome_note ? `Note: ${todayWorkoutRecord.outcome_note}` : 'One missed day does not erase momentum.',
         `Next up: ${nextWorkoutLabel}.`,
       ],
     }
@@ -255,6 +283,7 @@ export default function HomePage() {
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([])
   const [todayCheckIn, setTodayCheckIn] = useState<BodyMetricRow | null>(null)
   const [sessions, setSessions] = useState<CompletedSessionRow[]>([])
+  const [todayWorkoutRecord, setTodayWorkoutRecord] = useState<WorkoutRow | null>(null)
   const [basketballStatus, setBasketballStatus] = useState('unsure')
   const [loading, setLoading] = useState(true)
 
@@ -263,22 +292,25 @@ export default function HomePage() {
       try {
         const weekStart = getWeekStartDate()
 
-        const [metricRows, sessionRows, todayRow, weekly] = await Promise.all([
+        const [metricRows, sessionRows, todayRow, weekly, todayWorkout] = await Promise.all([
           loadBodyMetricsHistoryFromSupabase(),
           loadCompletedSessionsFromSupabase(),
           loadTodayCheckInFromSupabase(),
           getWeeklySettings(weekStart),
+          loadTodayWorkoutRecordFromSupabase(),
         ])
 
         setMetrics(Array.isArray(metricRows) ? metricRows : [])
         setSessions(Array.isArray(sessionRows) ? sessionRows : [])
         setTodayCheckIn(todayRow ?? null)
+        setTodayWorkoutRecord(todayWorkout ?? null)
         setBasketballStatus(weekly?.basketball_status ?? 'unsure')
       } catch (error) {
         console.error('Home load error', error)
         setMetrics([])
         setSessions([])
         setTodayCheckIn(null)
+        setTodayWorkoutRecord(null)
         setBasketballStatus('unsure')
       } finally {
         setLoading(false)
@@ -346,6 +378,7 @@ export default function HomePage() {
         oldestMetric,
         todayCompletedSession,
         todayCheckIn,
+        todayWorkoutRecord,
         lastMeaningfulWorkout,
         streakCount,
         basketballStatus,
@@ -357,6 +390,7 @@ export default function HomePage() {
       oldestMetric,
       todayCompletedSession,
       todayCheckIn,
+      todayWorkoutRecord,
       lastMeaningfulWorkout,
       streakCount,
       basketballStatus,
@@ -364,6 +398,9 @@ export default function HomePage() {
       loading,
     ]
   )
+
+  const todayAlternative = todayWorkoutRecord?.status === 'alternative_completed'
+  const todayMissed = todayWorkoutRecord?.status === 'missed'
 
   return (
     <div className="space-y-6 pb-6">
@@ -427,7 +464,11 @@ export default function HomePage() {
           href="/workout"
           className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
         >
-          {todayCompletedSession ? 'Review Workout' : 'Start Workout'}
+          {todayCompletedSession
+            ? 'Review Workout'
+            : todayAlternative || todayMissed
+              ? 'View Today'
+              : 'Start Workout'}
         </Link>
       </section>
 
@@ -444,6 +485,36 @@ export default function HomePage() {
             </div>
             <div className="mt-3 text-[0.95rem] text-slate-300">
               {todayCompletedSession.duration_minutes} min actual
+            </div>
+            <div className="mt-3 text-[0.9rem] text-slate-400">
+              Next: {nextWorkoutLabel}
+            </div>
+          </>
+        ) : todayAlternative ? (
+          <>
+            <div className="mt-3 text-[1.45rem] font-semibold leading-tight text-white">
+              {todayPlan.label}: Alternative Workout Logged
+            </div>
+            <div className="mt-3 text-[1rem] font-semibold text-emerald-400">
+              Alternative completed ✅
+            </div>
+            <div className="mt-3 text-[0.95rem] text-slate-300">
+              {todayWorkoutRecord?.alternative_reason?.replaceAll('_', ' ') ?? 'Alternative workout'}
+            </div>
+            <div className="mt-3 text-[0.9rem] text-slate-400">
+              Next: {nextWorkoutLabel}
+            </div>
+          </>
+        ) : todayMissed ? (
+          <>
+            <div className="mt-3 text-[1.45rem] font-semibold leading-tight text-white">
+              {todayPlan.label}: Workout Missed
+            </div>
+            <div className="mt-3 text-[1rem] font-semibold text-amber-400">
+              Logged for today
+            </div>
+            <div className="mt-3 text-[0.95rem] text-slate-300">
+              {todayWorkoutRecord?.miss_reason?.replaceAll('_', ' ') ?? 'Missed workout'}
             </div>
             <div className="mt-3 text-[0.9rem] text-slate-400">
               Next: {nextWorkoutLabel}

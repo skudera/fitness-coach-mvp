@@ -33,6 +33,10 @@ export type WorkoutRow = {
   day_name?: string | null
   focus?: string | null
   status?: string | null
+  miss_reason?: string | null
+  alternative_reason?: string | null
+  outcome_note?: string | null
+  counts_for_streak?: boolean | null
   estimated_minutes?: number | null
   actual_minutes?: number | null
   warmup_text?: string | null
@@ -232,6 +236,7 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
         day_name: payload.day_name,
         focus: payload.focus,
         status: 'completed',
+        counts_for_streak: true,
         estimated_minutes: payload.estimated_minutes ?? null,
         actual_minutes: payload.actual_minutes ?? null,
         warmup_text: payload.warmup_text ?? null,
@@ -308,6 +313,84 @@ export async function loadCompletedSessionsFromSupabase(): Promise<CompletedSess
   }
 
   return (data ?? []) as CompletedSessionRow[]
+}
+
+export async function loadTodayWorkoutRecordFromSupabase(
+  date?: string
+): Promise<WorkoutRow | null> {
+  const userId = await requireUserId()
+  const targetDate = date ?? getLocalDateString()
+
+  const { data, error } = await supabase
+    .from('workouts')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('date', targetDate)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Today workout record load error:', error)
+    return null
+  }
+
+  return (data as WorkoutRow | null) ?? null
+}
+
+export async function saveWorkoutOutcomeToSupabase(payload: {
+  date: string
+  day_name: string
+  focus: string
+  status: 'alternative_completed' | 'missed'
+  miss_reason?: string | null
+  alternative_reason?: string | null
+  outcome_note?: string | null
+  counts_for_streak?: boolean
+}) {
+  const userId = await requireUserId()
+  const existing = await loadTodayWorkoutRecordFromSupabase(payload.date)
+
+  const record = {
+    user_id: userId,
+    date: payload.date,
+    day_name: payload.day_name,
+    focus: payload.focus,
+    status: payload.status,
+    miss_reason: payload.miss_reason ?? null,
+    alternative_reason: payload.alternative_reason ?? null,
+    outcome_note: payload.outcome_note ?? null,
+    counts_for_streak: payload.counts_for_streak ?? false,
+  }
+
+  if (existing?.id) {
+    const { data, error } = await supabase
+      .from('workouts')
+      .update(record)
+      .eq('id', existing.id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Workout outcome update error:', error)
+      throw error
+    }
+
+    return data as WorkoutRow
+  }
+
+  const { data, error } = await supabase
+    .from('workouts')
+    .insert([record])
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Workout outcome insert error:', error)
+    throw error
+  }
+
+  return data as WorkoutRow
 }
 
 export async function getWeeklySettings(weekStart: string): Promise<WeeklySettingsRow | null> {

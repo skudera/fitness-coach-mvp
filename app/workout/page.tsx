@@ -22,13 +22,17 @@ import {
   getWeeklySettings,
   loadCompletedSessionsFromSupabase,
   loadEquipmentPreferences,
+  loadTodayWorkoutRecordFromSupabase,
   saveWeeklyRecoverySettings,
+  saveWorkoutOutcomeToSupabase,
   type CompletedSessionRow,
   type WeeklySettingsRow,
+  type WorkoutRow,
 } from '@/lib/storage-supabase'
 import { loadWorkoutProgress } from '@/lib/workout-log-state'
 
 type OptionValue = string | null
+type OutcomeMode = 'alternative' | 'missed' | null
 
 function OptionGroup({
   title,
@@ -77,18 +81,15 @@ function NumberInput({
   onChange,
 }: {
   label: string
-  value: number | null | undefined
-  onChange: (next: number | null) => void
+  value: string
+  onChange: (next: string) => void
 }) {
   return (
     <div>
       <div className="label mb-2">{label}</div>
       <input
-        value={value ?? ''}
-        onChange={(e) => {
-          const raw = e.target.value.trim()
-          onChange(raw ? Number(raw) : null)
-        }}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         inputMode="numeric"
         className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white"
       />
@@ -102,8 +103,20 @@ export default function WorkoutPage() {
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [cardioPreference, setCardioPreference] = useState<string | null>(null)
   const [completedToday, setCompletedToday] = useState<CompletedSessionRow | null>(null)
+  const [todayWorkoutRecord, setTodayWorkoutRecord] = useState<WorkoutRow | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  const [showOutcomeForm, setShowOutcomeForm] = useState(false)
+  const [outcomeMode, setOutcomeMode] = useState<OutcomeMode>(null)
+  const [alternativeReason, setAlternativeReason] = useState<string | null>(null)
+  const [missReason, setMissReason] = useState<string | null>(null)
+  const [outcomeNote, setOutcomeNote] = useState('')
+  const [countsForStreak, setCountsForStreak] = useState(true)
+
+  const [minutesInput, setMinutesInput] = useState('')
+  const [activeCaloriesInput, setActiveCaloriesInput] = useState('')
+  const [avgHrInput, setAvgHrInput] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -113,14 +126,16 @@ export default function WorkoutPage() {
         setHasInProgressWorkout(Boolean(saved))
 
         const weekStart = getWeekStartDate()
-        const [weekly, sessions, prefs] = await Promise.all([
+        const [weekly, sessions, prefs, todayRecord] = await Promise.all([
           getWeeklySettings(weekStart),
           loadCompletedSessionsFromSupabase(),
           loadEquipmentPreferences(),
+          loadTodayWorkoutRecordFromSupabase(date),
         ])
 
         setWeeklySettings(weekly ?? null)
         setCardioPreference(prefs?.cardio_preference ?? null)
+        setTodayWorkoutRecord(todayRecord ?? null)
 
         const todays = (sessions ?? []).filter(
           (session) => session.date === date && (session.duration_minutes ?? 0) >= 5
@@ -132,6 +147,7 @@ export default function WorkoutPage() {
         setWeeklySettings(null)
         setCardioPreference(null)
         setCompletedToday(null)
+        setTodayWorkoutRecord(null)
       } finally {
         setLoaded(true)
       }
@@ -139,6 +155,34 @@ export default function WorkoutPage() {
 
     load()
   }, [baseWorkout.dayName])
+
+  useEffect(() => {
+    setMinutesInput(
+      weeklySettings?.basketball_minutes != null
+        ? String(weeklySettings.basketball_minutes)
+        : ''
+    )
+    setActiveCaloriesInput(
+      weeklySettings?.basketball_active_calories != null
+        ? String(weeklySettings.basketball_active_calories)
+        : ''
+    )
+    setAvgHrInput(
+      weeklySettings?.basketball_avg_hr != null
+        ? String(weeklySettings.basketball_avg_hr)
+        : ''
+    )
+  }, [
+    weeklySettings?.basketball_minutes,
+    weeklySettings?.basketball_active_calories,
+    weeklySettings?.basketball_avg_hr,
+  ])
+
+  async function refreshTodayRecord() {
+    const date = getLocalDateString()
+    const todayRecord = await loadTodayWorkoutRecordFromSupabase(date)
+    setTodayWorkoutRecord(todayRecord ?? null)
+  }
 
   async function saveRecoveryUpdate(updates: Partial<WeeklySettingsRow>) {
     try {
@@ -171,6 +215,59 @@ export default function WorkoutPage() {
     await saveRecoveryUpdate({
       basketball_status: 'yes',
     })
+  }
+
+  async function handleSaveFridayStats() {
+    await saveRecoveryUpdate({
+      basketball_minutes: minutesInput.trim() ? Number(minutesInput) : null,
+      basketball_active_calories: activeCaloriesInput.trim()
+        ? Number(activeCaloriesInput)
+        : null,
+      basketball_avg_hr: avgHrInput.trim() ? Number(avgHrInput) : null,
+    })
+  }
+
+  async function handleSaveOutcome() {
+    const date = getLocalDateString()
+
+    try {
+      setSaving(true)
+
+      if (outcomeMode === 'alternative') {
+        if (!alternativeReason) return
+
+        await saveWorkoutOutcomeToSupabase({
+          date,
+          day_name: baseWorkout.dayName,
+          focus: baseWorkout.focus,
+          status: 'alternative_completed',
+          alternative_reason: alternativeReason,
+          outcome_note: outcomeNote.trim() || null,
+          counts_for_streak: countsForStreak,
+        })
+      }
+
+      if (outcomeMode === 'missed') {
+        if (!missReason) return
+
+        await saveWorkoutOutcomeToSupabase({
+          date,
+          day_name: baseWorkout.dayName,
+          focus: baseWorkout.focus,
+          status: 'missed',
+          miss_reason: missReason,
+          outcome_note: outcomeNote.trim() || null,
+          counts_for_streak: false,
+        })
+      }
+
+      await refreshTodayRecord()
+      setShowOutcomeForm(false)
+    } catch (error) {
+      console.error('Save outcome error', error)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const isFriday = baseWorkout.dayName === 'Friday'
@@ -226,6 +323,19 @@ export default function WorkoutPage() {
     fridayOutput === 'walk_only' ||
     fridayOutput === 'full_rest'
 
+  const canStartFridayWorkout =
+    !isFriday ||
+    noBasketball ||
+    (basketballHappened &&
+      hasBasketballData &&
+      fridayOutput != null &&
+      fridayOutput !== 'walk_only' &&
+      fridayOutput !== 'full_rest')
+
+  const alternativeLogged = todayWorkoutRecord?.status === 'alternative_completed'
+  const missedLogged = todayWorkoutRecord?.status === 'missed'
+  const hasOutcomeLogged = alternativeLogged || missedLogged
+
   return (
     <div className="space-y-6 pb-6">
       <div>
@@ -243,6 +353,28 @@ export default function WorkoutPage() {
           <p className="text-sm text-slate-400">
             Duration: {completedToday.duration_minutes ?? '—'} min
           </p>
+        </section>
+      ) : alternativeLogged ? (
+        <section className="card space-y-4 border border-emerald-500/30">
+          <div className="label">Alternative Workout Logged</div>
+          <p className="text-slate-100">Today was logged as an alternative workout.</p>
+          <p className="text-sm text-slate-400">
+            Reason: {todayWorkoutRecord?.alternative_reason?.replaceAll('_', ' ') ?? '—'}
+          </p>
+          {todayWorkoutRecord?.outcome_note ? (
+            <p className="text-sm text-slate-400">Note: {todayWorkoutRecord.outcome_note}</p>
+          ) : null}
+        </section>
+      ) : missedLogged ? (
+        <section className="card space-y-4 border border-amber-500/30">
+          <div className="label">Workout Marked Missed</div>
+          <p className="text-slate-100">Today’s workout was marked as missed.</p>
+          <p className="text-sm text-slate-400">
+            Reason: {todayWorkoutRecord?.miss_reason?.replaceAll('_', ' ') ?? '—'}
+          </p>
+          {todayWorkoutRecord?.outcome_note ? (
+            <p className="text-sm text-slate-400">Note: {todayWorkoutRecord.outcome_note}</p>
+          ) : null}
         </section>
       ) : hasInProgressWorkout ? (
         <section className="card space-y-4 border border-emerald-500/30">
@@ -284,22 +416,28 @@ export default function WorkoutPage() {
               <div className="grid grid-cols-3 gap-3">
                 <NumberInput
                   label="Minutes"
-                  value={weeklySettings?.basketball_minutes}
-                  onChange={(next) => saveRecoveryUpdate({ basketball_minutes: next })}
+                  value={minutesInput}
+                  onChange={setMinutesInput}
                 />
                 <NumberInput
                   label="Active Cals"
-                  value={weeklySettings?.basketball_active_calories}
-                  onChange={(next) =>
-                    saveRecoveryUpdate({ basketball_active_calories: next })
-                  }
+                  value={activeCaloriesInput}
+                  onChange={setActiveCaloriesInput}
                 />
                 <NumberInput
                   label="Avg HR"
-                  value={weeklySettings?.basketball_avg_hr}
-                  onChange={(next) => saveRecoveryUpdate({ basketball_avg_hr: next })}
+                  value={avgHrInput}
+                  onChange={setAvgHrInput}
                 />
               </div>
+
+              <button
+                type="button"
+                onClick={handleSaveFridayStats}
+                className="w-full rounded-[1.5rem] bg-white px-5 py-4 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100"
+              >
+                Save Basketball Stats
+              </button>
 
               <OptionGroup
                 title="How do you feel this morning?"
@@ -357,7 +495,8 @@ export default function WorkoutPage() {
             <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
               <div className="label">Today&apos;s recommendation</div>
               <p className="mt-2 text-slate-100">
-                Basketball did not happen, so you&apos;re cleared for the regular Friday template.
+                Basketball did not happen, so you&apos;re cleared for the regular Friday
+                template.
               </p>
             </div>
           ) : null}
@@ -367,6 +506,115 @@ export default function WorkoutPage() {
               ? 'Saving…'
               : 'This does not start the workout timer. It only decides your Friday plan.'}
           </p>
+        </section>
+      ) : null}
+
+      {!completedToday && !hasOutcomeLogged ? (
+        <section className="card space-y-4">
+          <div className="label">Need a different path?</div>
+          <button
+            type="button"
+            onClick={() => setShowOutcomeForm((prev) => !prev)}
+            className="w-full rounded-[1.5rem] border border-slate-700 bg-slate-900/40 px-5 py-4 text-left transition hover:bg-slate-800/60"
+          >
+            <div className="text-[1rem] font-semibold text-white">Can’t do this workout?</div>
+            <div className="mt-2 text-sm text-slate-400">
+              Log an alternative workout or mark today’s workout as missed.
+            </div>
+          </button>
+
+          {showOutcomeForm ? (
+            <div className="space-y-5 rounded-[1.5rem] border border-slate-700 bg-slate-900/40 p-4">
+              <OptionGroup
+                title="Choose one"
+                value={outcomeMode}
+                onSelect={(value) => {
+                  const next = value as OutcomeMode
+                  setOutcomeMode(next)
+                  setAlternativeReason(null)
+                  setMissReason(null)
+                  setCountsForStreak(next === 'alternative')
+                }}
+                options={[
+                  { label: 'Alternative workout', value: 'alternative' },
+                  { label: 'Missed workout', value: 'missed' },
+                ]}
+              />
+
+              {outcomeMode === 'alternative' ? (
+                <>
+                  <OptionGroup
+                    title="Alternative workout type"
+                    value={alternativeReason}
+                    onSelect={(value) => setAlternativeReason(value)}
+                    options={[
+                      { label: 'Home workout', value: 'home_workout' },
+                      { label: 'Hotel workout', value: 'hotel_workout' },
+                      { label: 'Outdoor run', value: 'outdoor_run' },
+                      { label: 'Walk only', value: 'walk_only' },
+                      { label: 'Basketball only', value: 'basketball_only' },
+                      { label: 'Recovery flow', value: 'recovery_flow' },
+                      { label: 'Other', value: 'other' },
+                    ]}
+                  />
+
+                  <OptionGroup
+                    title="Count this toward consistency?"
+                    value={countsForStreak ? 'yes' : 'no'}
+                    onSelect={(value) => setCountsForStreak(value === 'yes')}
+                    options={[
+                      { label: 'Yes', value: 'yes' },
+                      { label: 'No', value: 'no' },
+                    ]}
+                  />
+                </>
+              ) : null}
+
+              {outcomeMode === 'missed' ? (
+                <OptionGroup
+                  title="Why was it missed?"
+                  value={missReason}
+                  onSelect={(value) => setMissReason(value)}
+                  options={[
+                    { label: 'Sick', value: 'sick' },
+                    { label: 'Woke up late', value: 'woke_up_late' },
+                    { label: 'Work travel', value: 'work_travel' },
+                    { label: 'Family / schedule', value: 'family_schedule' },
+                    { label: 'Recovery needed', value: 'recovery_needed' },
+                    { label: 'Equipment issue', value: 'equipment_issue' },
+                    { label: 'Other', value: 'other' },
+                  ]}
+                />
+              ) : null}
+
+              {outcomeMode ? (
+                <div>
+                  <div className="label mb-2">Optional note</div>
+                  <textarea
+                    value={outcomeNote}
+                    onChange={(e) => setOutcomeNote(e.target.value)}
+                    rows={3}
+                    placeholder="Anything helpful to remember about today?"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-slate-500"
+                  />
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={handleSaveOutcome}
+                disabled={
+                  saving ||
+                  (outcomeMode === 'alternative' && !alternativeReason) ||
+                  (outcomeMode === 'missed' && !missReason) ||
+                  !outcomeMode
+                }
+                className="w-full rounded-[1.5rem] bg-white px-5 py-4 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save Today’s Outcome'}
+              </button>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -463,20 +711,24 @@ export default function WorkoutPage() {
         >
           View Progress
         </Link>
-      ) : isRecoveryOverride ? (
+      ) : hasOutcomeLogged ? (
         <Link
-          href="/plan"
+          href="/history"
           className="block w-full rounded-[1.75rem] bg-slate-800 px-5 py-5 text-center text-[1rem] font-semibold text-slate-100 transition hover:bg-slate-700"
         >
-          Review This Recovery Plan
+          View History
         </Link>
-      ) : (
+      ) : canStartFridayWorkout ? (
         <Link
           href="/workout/log"
           className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
         >
           {hasInProgressWorkout ? 'Resume Workout' : 'Start Workout'}
         </Link>
+      ) : (
+        <div className="rounded-[1.75rem] border border-slate-700 bg-slate-900/40 px-5 py-5 text-center text-[1rem] font-semibold text-slate-200">
+          Finish the Friday check first to unlock today’s plan.
+        </div>
       )}
     </div>
   )

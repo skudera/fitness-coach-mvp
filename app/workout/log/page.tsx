@@ -7,14 +7,22 @@ import {
   getTargetForExercise,
   getExerciseSubstitutions,
   getExerciseHistoryAliases,
+  type WorkoutDefinition,
 } from '@/lib/workout-data'
+import {
+  getFridayOutputType,
+  getFridayWorkoutFromOutput,
+  type FridayOutputType,
+} from '@/lib/recovery-governor'
 import {
   getLocalDateString,
   getWeekStartDate,
   getWeeklySettings,
   saveWorkoutAndLogsToSupabase,
   loadExerciseLogHistoryFromSupabase,
+  loadEquipmentPreferences,
   type ExerciseLogRow,
+  type WeeklySettingsRow,
 } from '@/lib/storage-supabase'
 import {
   loadWorkoutProgress,
@@ -126,20 +134,94 @@ function getSuggestedCardioMinutes(
   return Math.min(plannedCardioMinutes + 4, 20)
 }
 
+function getEffectiveWorkoutForLog(params: {
+  baseWorkout: WorkoutDefinition
+  weeklySettings: WeeklySettingsRow | null
+  cardioPreference: string | null
+}): { workout: WorkoutDefinition; fridayOutput: FridayOutputType | null } {
+  const { baseWorkout, weeklySettings, cardioPreference } = params
+
+  if (baseWorkout.dayName !== 'Friday') {
+    return {
+      workout: baseWorkout,
+      fridayOutput: null,
+    }
+  }
+
+  const fridayOutput = getFridayOutputType({
+    basketballStatus: weeklySettings?.basketball_status ?? null,
+    basketballTiming: weeklySettings?.basketball_timing ?? null,
+    basketballImpact: weeklySettings?.basketball_impact ?? null,
+    fridaySleepQuality: weeklySettings?.friday_sleep_quality ?? null,
+    basketballMinutes: weeklySettings?.basketball_minutes ?? null,
+    basketballActiveCalories: weeklySettings?.basketball_active_calories ?? null,
+    basketballAvgHr: weeklySettings?.basketball_avg_hr ?? null,
+  })
+
+  return {
+    workout: getFridayWorkoutFromOutput(fridayOutput, cardioPreference),
+    fridayOutput,
+  }
+}
+
+function getRecoveryWarmupBlock(workout: WorkoutDefinition) {
+  if (workout.focus === 'Home Anti-Office Recovery') {
+    return {
+      title: 'Decompress & Open',
+      intro: 'Start with the opening mobility block below before moving into the activation drills.',
+      buttonLabel: 'Start Mobility Block',
+      items: [
+        { name: '90/90 Hip Switches', detail: '2 min' },
+        { name: 'Couch Stretch', detail: '2 min each side' },
+        { name: 'Child’s Pose with Side Reach', detail: '2 min total' },
+      ],
+    }
+  }
+
+  if (workout.focus === 'Anti-Office / Structural Integrity') {
+    return {
+      title: 'Dynamic Mobility & Decompression',
+      intro: 'Start with the opening mobility block below before moving into the structural work.',
+      buttonLabel: 'Start Mobility Block',
+      items: [
+        { name: '90/90 Hip Switches', detail: '2 min' },
+        { name: 'Couch Stretch', detail: '2 min each side' },
+        { name: 'Child’s Pose with Side Reach', detail: '2 min total' },
+        { name: 'Dead Hangs', detail: '2 sets of 20–30 sec' },
+      ],
+    }
+  }
+
+  return null
+}
+
 const difficultyOptions = ['Easy', 'Good', 'Hard', 'Too Hard']
 const discomfortLocationOptions = ['None', 'Shoulder', 'Back', 'Other']
 const discomfortSeverityOptions = ['Low', 'Medium', 'High']
 
 export default function WorkoutLogPage() {
   const router = useRouter()
-  const workout = useMemo(() => getWorkoutForToday(), [])
+  const baseWorkout = useMemo(() => getWorkoutForToday(), [])
   const date = getLocalDateString()
+
+  const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
+  const [cardioPreference, setCardioPreference] = useState<string | null>(null)
+
+  const { workout } = useMemo(
+    () =>
+      getEffectiveWorkoutForLog({
+        baseWorkout,
+        weeklySettings,
+        cardioPreference,
+      }),
+    [baseWorkout, weeklySettings, cardioPreference]
+  )
 
   const [startedAt, setStartedAt] = useState('')
   const [strengthEndedAt, setStrengthEndedAt] = useState('')
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [entries, setEntries] = useState<WorkoutExerciseEntry[]>(() =>
-    buildInitialEntries(workout.exercises)
+    buildInitialEntries(baseWorkout.exercises)
   )
   const [currentIndex, setCurrentIndex] = useState(-1)
   const [completedCardio, setCompletedCardio] = useState(true)
@@ -153,12 +235,13 @@ export default function WorkoutLogPage() {
   const [skipLock, setSkipLock] = useState(false)
   const [basketballStatus, setBasketballStatus] = useState('unsure')
   const [historyLogs, setHistoryLogs] = useState<ExerciseLogRow[]>([])
+  const [usedSavedProgress, setUsedSavedProgress] = useState(false)
 
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     async function load() {
-      const saved = loadWorkoutProgress(date, workout.dayName)
+      const saved = loadWorkoutProgress(date, baseWorkout.dayName)
 
       if (saved) {
         setStartedAt(saved.startedAt || new Date().toISOString())
@@ -171,24 +254,55 @@ export default function WorkoutLogPage() {
         setCardioMinutes(saved.cardioMinutes ?? '')
         setSkippedIndices(saved.skippedIndices)
         setCompletedIndices(saved.completedIndices)
+        setUsedSavedProgress(true)
       } else {
         setStartedAt(new Date().toISOString())
+        setUsedSavedProgress(false)
       }
 
       try {
         const weekStart = getWeekStartDate()
-        const weekly = await getWeeklySettings(weekStart)
+        const [weekly, prefs] = await Promise.all([
+          getWeeklySettings(weekStart),
+          loadEquipmentPreferences(),
+        ])
+        setWeeklySettings(weekly ?? null)
         setBasketballStatus(weekly?.basketball_status ?? 'unsure')
+        setCardioPreference(prefs?.cardio_preference ?? null)
       } catch (loadError) {
         console.error('Workout log weekly settings load error', loadError)
         setBasketballStatus('unsure')
+        setCardioPreference(null)
       } finally {
         setIsLoaded(true)
       }
     }
 
     load()
-  }, [date, workout.dayName])
+  }, [date, baseWorkout.dayName])
+
+  useEffect(() => {
+    if (!isLoaded) return
+    if (usedSavedProgress) return
+    if (currentIndex !== -1) return
+    if (completedIndices.length) return
+    if (skippedIndices.length) return
+
+    const currentNames = entries.map((entry) => entry.name).join('|')
+    const expectedNames = workout.exercises.join('|')
+
+    if (currentNames !== expectedNames) {
+      setEntries(buildInitialEntries(workout.exercises))
+    }
+  }, [
+    isLoaded,
+    usedSavedProgress,
+    currentIndex,
+    completedIndices,
+    skippedIndices,
+    entries,
+    workout.exercises,
+  ])
 
   useEffect(() => {
     if (!startedAt) return
@@ -273,6 +387,7 @@ export default function WorkoutLogPage() {
 
   const currentEntry = currentIndex >= 0 ? entries[currentIndex] : null
   const currentTarget = currentEntry ? getTargetForExercise(currentEntry.name) : null
+  const recoveryWarmupBlock = useMemo(() => getRecoveryWarmupBlock(workout), [workout])
 
   const nextPendingIndex = useMemo(() => {
     return getNextPendingIndex(currentIndex, entries.length, completedIndices)
@@ -637,18 +752,44 @@ export default function WorkoutLogPage() {
 
       {isWarmupStep ? (
         <section className="card space-y-4">
-          <div className="label">Warmup</div>
+          <div className="label">
+            {recoveryWarmupBlock ? recoveryWarmupBlock.title : 'Warmup'}
+          </div>
+
           <h2 className="text-lg font-semibold text-white">{workout.warmup}</h2>
-          <p className="text-sm text-slate-400">
-            Complete your warmup, then begin Exercise 1.
-          </p>
+
+          {recoveryWarmupBlock ? (
+            <>
+              <p className="text-sm text-slate-400">{recoveryWarmupBlock.intro}</p>
+
+              <div className="space-y-3">
+                {recoveryWarmupBlock.items.map((item) => (
+                  <div
+                    key={item.name}
+                    className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold text-white">{item.name}</div>
+                      <div className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300">
+                        {item.detail}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-400">
+              Complete your warmup, then begin Exercise 1.
+            </p>
+          )}
 
           <button
             type="button"
             onClick={handleStartExercises}
             className="block w-full rounded-[1.5rem] bg-emerald-500 px-5 py-4 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
           >
-            Start Exercise 1
+            {recoveryWarmupBlock ? recoveryWarmupBlock.buttonLabel : 'Start Exercise 1'}
           </button>
         </section>
       ) : !allExercisesCompleted && currentEntry ? (
