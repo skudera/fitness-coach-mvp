@@ -215,6 +215,8 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
   date: string
   day_name: string
   focus: string
+  status?: 'completed' | 'completed_partial'
+  outcome_note?: string | null
   estimated_minutes?: number | null
   actual_minutes?: number | null
   strength_minutes?: number | null
@@ -227,6 +229,9 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
 }) {
   const userId = await requireUserId()
 
+  const status = payload.status ?? 'completed'
+  const countsForStreak = true
+
   const { data: workout, error: workoutError } = await supabase
     .from('workouts')
     .insert([
@@ -235,8 +240,9 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
         date: payload.date,
         day_name: payload.day_name,
         focus: payload.focus,
-        status: 'completed',
-        counts_for_streak: true,
+        status,
+        counts_for_streak: countsForStreak,
+        outcome_note: payload.outcome_note ?? null,
         estimated_minutes: payload.estimated_minutes ?? null,
         actual_minutes: payload.actual_minutes ?? null,
         warmup_text: payload.warmup_text ?? null,
