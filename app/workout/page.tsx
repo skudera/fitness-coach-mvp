@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { getWorkoutForToday } from '@/lib/workout-data'
+import { getWorkoutForToday, getTargetForExercise } from '@/lib/workout-data'
 import {
   detectBasketballLoad,
   getFridayOutputLabel,
@@ -95,6 +95,105 @@ function NumberInput({
       />
     </div>
   )
+}
+
+function getDayEmphasis(dayName: string) {
+  switch (dayName) {
+    case 'Monday':
+      return {
+        title: 'Today’s emphasis',
+        body: 'Keep machine presses controlled and joint-friendly. Use a 3-second lowering phase on your primary chest pressing and keep all shoulder work clean.',
+      }
+    case 'Tuesday':
+      return {
+        title: 'Today’s emphasis',
+        body: 'Back work should stay smooth and controlled, and core work should feel like real high-tension training instead of a throwaway finisher.',
+      }
+    case 'Wednesday':
+      return {
+        title: 'Today’s emphasis',
+        body: 'Prioritize hamstrings, glutes, and trunk control so leg day supports posture and pelvis position, not just quad fatigue.',
+      }
+    case 'Thursday':
+      return {
+        title: 'Today’s emphasis',
+        body: 'Keep mixed upper work clean before basketball. Lateral raises should stay strict and shoulder mechanics should never get sloppy.',
+      }
+    case 'Friday':
+      return {
+        title: 'Today’s emphasis',
+        body: 'Let basketball recovery drive the day. Friday should adapt to your load and sleep, not force the original template.',
+      }
+    default:
+      return null
+  }
+}
+
+function getExerciseCoachingTags(dayName: string, exerciseName: string) {
+  const name = exerciseName.toLowerCase()
+  const tags: string[] = []
+
+  if (
+    name.includes('chest press machine') ||
+    name.includes('lat pulldown') ||
+    name.includes('leg press')
+  ) {
+    tags.push('3-sec eccentric')
+  }
+
+  if (name.includes('cable crunch') || name.includes('ab machine')) {
+    tags.push('high-tension core')
+  }
+
+  if (dayName === 'Wednesday' && name.includes('hamstring curl')) {
+    tags.push('posterior chain priority')
+  }
+
+  if (dayName === 'Wednesday' && name.includes('abductor machine')) {
+    tags.push('glute support')
+  }
+
+  if (dayName === 'Thursday' && name.includes('lateral raise')) {
+    tags.push('strict form')
+  }
+
+  if (
+    name.includes('chest press machine') ||
+    name.includes('lat pulldown') ||
+    name.includes('row') ||
+    name.includes('hack squat') ||
+    name.includes('leg press')
+  ) {
+    tags.push('form-first progression')
+  }
+
+  return tags
+}
+
+function getFridayUnlockMessage(params: {
+  basketballStatus: string | null | undefined
+  hasBasketballData: boolean
+  fridayOutput: FridayOutputType | null
+}) {
+  const { basketballStatus, hasBasketballData, fridayOutput } = params
+
+  if (basketballStatus !== 'yes') {
+    return 'Finish the Friday check first to unlock today’s plan.'
+  }
+
+  if (!hasBasketballData) {
+    return 'Save your basketball stats and morning feel to unlock today’s plan.'
+  }
+
+  if (fridayOutput === 'walk_only') {
+    return 'Today is a walk-only recovery day. No lifting session to start.'
+  }
+
+  if (fridayOutput === 'full_rest') {
+    return 'Today is a full rest day based on your recovery inputs.'
+  }
+
+  return 'Finish the Friday check first to unlock today’s plan.'
 }
 
 export default function WorkoutPage() {
@@ -334,7 +433,12 @@ export default function WorkoutPage() {
 
   const alternativeLogged = todayWorkoutRecord?.status === 'alternative_completed'
   const missedLogged = todayWorkoutRecord?.status === 'missed'
+  const partialLogged = todayWorkoutRecord?.status === 'completed_partial'
   const hasOutcomeLogged = alternativeLogged || missedLogged
+  const dayEmphasis = useMemo(
+    () => getDayEmphasis(effectiveWorkout.dayName),
+    [effectiveWorkout.dayName]
+  )
 
   return (
     <div className="space-y-6 pb-6">
@@ -346,6 +450,13 @@ export default function WorkoutPage() {
         <p className="mt-2 text-slate-300">{effectiveWorkout.estimatedMinutes}</p>
       </div>
 
+      {dayEmphasis ? (
+        <section className="card space-y-4">
+          <div className="label">{dayEmphasis.title}</div>
+          <p className="text-slate-100">{dayEmphasis.body}</p>
+        </section>
+      ) : null}
+
       {completedToday ? (
         <section className="card space-y-4 border border-emerald-500/30">
           <div className="label">Completed</div>
@@ -353,6 +464,9 @@ export default function WorkoutPage() {
           <p className="text-sm text-slate-400">
             Duration: {completedToday.duration_minutes ?? '—'} min
           </p>
+          {partialLogged && todayWorkoutRecord?.outcome_note ? (
+            <p className="text-sm text-slate-400">Partial note: {todayWorkoutRecord.outcome_note}</p>
+          ) : null}
         </section>
       ) : alternativeLogged ? (
         <section className="card space-y-4 border border-emerald-500/30">
@@ -495,8 +609,7 @@ export default function WorkoutPage() {
             <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
               <div className="label">Today&apos;s recommendation</div>
               <p className="mt-2 text-slate-100">
-                Basketball did not happen, so you&apos;re cleared for the regular Friday
-                template.
+                Basketball did not happen, so you&apos;re cleared for the regular Friday template.
               </p>
             </div>
           ) : null}
@@ -626,14 +739,37 @@ export default function WorkoutPage() {
       <section className="card space-y-4">
         <div className="label">Today&apos;s exercises</div>
         <div className="space-y-3">
-          {effectiveWorkout.exercises.map((exercise) => (
-            <div
-              key={exercise}
-              className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4 text-slate-100"
-            >
-              {exercise}
-            </div>
-          ))}
+          {effectiveWorkout.exercises.map((exercise) => {
+            const target = getTargetForExercise(exercise)
+            const tags = getExerciseCoachingTags(effectiveWorkout.dayName, exercise)
+
+            return (
+              <div
+                key={exercise}
+                className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-slate-100">{exercise}</div>
+                  <div className="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
+                    {target.sets} × {target.reps}
+                  </div>
+                </div>
+
+                {tags.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {tags.map((tag) => (
+                      <div
+                        key={`${exercise}-${tag}`}
+                        className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-emerald-300"
+                      >
+                        {tag}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
         </div>
       </section>
 
@@ -704,6 +840,14 @@ export default function WorkoutPage() {
         <p className="text-slate-100">{effectiveWorkout.cardio}</p>
       </section>
 
+      <section className="card space-y-4">
+        <div className="label">Progression rule</div>
+        <p className="text-sm leading-6 text-slate-300">
+          Progression should stay form-first. Clean reps earn normal progression. Slight
+          breakdown should hold the load. Clear breakdown should reduce the load next time.
+        </p>
+      </section>
+
       {!loaded ? null : completedToday ? (
         <Link
           href="/progress"
@@ -727,7 +871,11 @@ export default function WorkoutPage() {
         </Link>
       ) : (
         <div className="rounded-[1.75rem] border border-slate-700 bg-slate-900/40 px-5 py-5 text-center text-[1rem] font-semibold text-slate-200">
-          Finish the Friday check first to unlock today’s plan.
+          {getFridayUnlockMessage({
+            basketballStatus: weeklySettings?.basketball_status,
+            hasBasketballData,
+            fridayOutput,
+          })}
         </div>
       )}
     </div>

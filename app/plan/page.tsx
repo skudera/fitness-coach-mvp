@@ -18,6 +18,79 @@ import {
   type WeeklySettingsRow,
 } from '@/lib/storage-supabase'
 
+function getDayEmphasis(dayName: string) {
+  switch (dayName) {
+    case 'Monday':
+      return {
+        title: 'Monday emphasis',
+        body: 'Chest and shoulder work should stay controlled. Prioritize clean reps and a slow lowering phase on primary machine presses.',
+      }
+    case 'Tuesday':
+      return {
+        title: 'Tuesday emphasis',
+        body: 'Back work stays controlled and core work should be treated as high-tension work, not just filler at the end.',
+      }
+    case 'Wednesday':
+      return {
+        title: 'Wednesday emphasis',
+        body: 'Leg day should bias hamstrings, glutes, and trunk tension so the session supports posture and pelvic position, not just quad fatigue.',
+      }
+    case 'Thursday':
+      return {
+        title: 'Thursday emphasis',
+        body: 'Mixed upper day should stay clean and athletic. Keep lateral raises strict and avoid swinging or chasing sloppy reps before basketball.',
+      }
+    case 'Friday':
+      return {
+        title: 'Friday emphasis',
+        body: 'Friday should reflect your basketball recovery inputs first. Let the governor decide whether this is a normal lift, a recovery flow, or a lighter day.',
+      }
+    default:
+      return null
+  }
+}
+
+function getExerciseCoachingTags(dayName: string, exerciseName: string) {
+  const name = exerciseName.toLowerCase()
+  const tags: string[] = []
+
+  if (
+    name.includes('chest press machine') ||
+    name.includes('lat pulldown') ||
+    name.includes('leg press')
+  ) {
+    tags.push('3-sec eccentric')
+  }
+
+  if (name.includes('cable crunch') || name.includes('ab machine')) {
+    tags.push('high-tension core')
+  }
+
+  if (dayName === 'Wednesday' && name.includes('hamstring curl')) {
+    tags.push('posterior chain priority')
+  }
+
+  if (dayName === 'Wednesday' && name.includes('abductor machine')) {
+    tags.push('glute support')
+  }
+
+  if (dayName === 'Thursday' && name.includes('lateral raise')) {
+    tags.push('strict form')
+  }
+
+  if (
+    name.includes('chest press machine') ||
+    name.includes('lat pulldown') ||
+    name.includes('row') ||
+    name.includes('hack squat') ||
+    name.includes('leg press')
+  ) {
+    tags.push('form-first progression')
+  }
+
+  return tags
+}
+
 export default function PlanPage() {
   const weekPlan = useMemo(() => getWeekPlan(), [])
   const [selectedDay, setSelectedDay] = useState<number>(() => {
@@ -80,6 +153,11 @@ export default function PlanPage() {
     })
   }, [weeklySettings])
 
+  const dayEmphasis = useMemo(
+    () => getDayEmphasis(effectiveWorkout.dayName),
+    [effectiveWorkout.dayName]
+  )
+
   return (
     <div className="space-y-6 pb-6">
       <div>
@@ -117,6 +195,13 @@ export default function PlanPage() {
         <div className="label">{effectiveWorkout.dayName}</div>
         <h2 className="text-2xl font-semibold text-white">{effectiveWorkout.focus}</h2>
         <p className="text-slate-300">{effectiveWorkout.estimatedMinutes}</p>
+
+        {dayEmphasis ? (
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="label">{dayEmphasis.title}</div>
+            <p className="mt-2 text-slate-100">{dayEmphasis.body}</p>
+          </div>
+        ) : null}
 
         {selectedWorkout.dayName === 'Friday' ? (
           <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
@@ -198,6 +283,8 @@ export default function PlanPage() {
           <div className="space-y-3">
             {effectiveWorkout.exercises.map((exercise) => {
               const target = getTargetForExercise(exercise)
+              const tags = getExerciseCoachingTags(effectiveWorkout.dayName, exercise)
+
               return (
                 <div
                   key={exercise}
@@ -209,6 +296,19 @@ export default function PlanPage() {
                       {target.sets} × {target.reps}
                     </div>
                   </div>
+
+                  {tags.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {tags.map((tag) => (
+                        <div
+                          key={`${exercise}-${tag}`}
+                          className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-emerald-300"
+                        >
+                          {tag}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               )
             })}
@@ -221,6 +321,16 @@ export default function PlanPage() {
             {effectiveWorkout.cardio}
           </div>
         </div>
+
+        {effectiveWorkout.dayName !== 'Friday' ? (
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="label">Progression rule</div>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Progression should stay form-first. Clean reps earn normal progression. Slight
+              breakdown means hold the load. Clear breakdown means reduce load next time.
+            </p>
+          </div>
+        ) : null}
       </section>
 
       <Link

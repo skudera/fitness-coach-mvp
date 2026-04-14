@@ -243,6 +243,47 @@ function entryHasAnyData(entry: WorkoutExerciseEntry) {
   )
 }
 
+function getExerciseCoachingTags(dayName: string, exerciseName: string) {
+  const name = exerciseName.toLowerCase()
+  const tags: string[] = []
+
+  if (
+    name.includes('chest press machine') ||
+    name.includes('lat pulldown') ||
+    name.includes('leg press')
+  ) {
+    tags.push('3-sec eccentric')
+  }
+
+  if (name.includes('cable crunch') || name.includes('ab machine')) {
+    tags.push('high-tension core')
+  }
+
+  if (dayName === 'Wednesday' && name.includes('hamstring curl')) {
+    tags.push('posterior chain priority')
+  }
+
+  if (dayName === 'Wednesday' && name.includes('abductor machine')) {
+    tags.push('glute support')
+  }
+
+  if (dayName === 'Thursday' && name.includes('lateral raise')) {
+    tags.push('strict form')
+  }
+
+  if (
+    name.includes('chest press machine') ||
+    name.includes('lat pulldown') ||
+    name.includes('row') ||
+    name.includes('hack squat') ||
+    name.includes('leg press')
+  ) {
+    tags.push('form-first progression')
+  }
+
+  return tags
+}
+
 const difficultyOptions = ['Easy', 'Good', 'Hard', 'Too Hard']
 const discomfortLocationOptions = ['None', 'Shoulder', 'Back', 'Other']
 const discomfortSeverityOptions = ['Low', 'Medium', 'High']
@@ -466,10 +507,10 @@ export default function WorkoutLogPage() {
         ? recoveryConfig.finishLabel
         : 'Cardio / Finish'
       : nextPendingIndex >= 0 && entries[nextPendingIndex]
-      ? entries[nextPendingIndex].name
-      : isRecoveryMode
-      ? recoveryConfig.finishLabel
-      : 'Cardio / Finish'
+        ? entries[nextPendingIndex].name
+        : isRecoveryMode
+          ? recoveryConfig.finishLabel
+          : 'Cardio / Finish'
 
   const allExercisesCompleted = completedIndices.length === entries.length
   const isWarmupStep = currentIndex === -1
@@ -561,6 +602,11 @@ export default function WorkoutLogPage() {
 
   const recoveryTarget =
     currentEntry && isRecoveryMode ? recoveryConfig.targetByExercise[currentEntry.name] ?? '' : ''
+
+  const coachingTags = useMemo(() => {
+    if (!currentEntry) return []
+    return getExerciseCoachingTags(workout.dayName, currentEntry.name)
+  }, [currentEntry, workout.dayName])
 
   function updateSetValue(setIndex: number, field: 'weight' | 'reps', value: string) {
     if (currentIndex < 0) return
@@ -662,7 +708,9 @@ export default function WorkoutLogPage() {
     if (isRecoveryMode) {
       const indicesToSave = savePartial
         ? entries
-            .map((entry, index) => (completedIndices.includes(index) || entryHasAnyData(entry) ? index : -1))
+            .map((entry, index) =>
+              completedIndices.includes(index) || entryHasAnyData(entry) ? index : -1
+            )
             .filter((index) => index >= 0)
         : entries.map((_, index) => index)
 
@@ -690,7 +738,9 @@ export default function WorkoutLogPage() {
 
     const indicesToSave = savePartial
       ? entries
-          .map((entry, index) => (completedIndices.includes(index) || entryHasAnyData(entry) ? index : -1))
+          .map((entry, index) =>
+            completedIndices.includes(index) || entryHasAnyData(entry) ? index : -1
+          )
           .filter((index) => index >= 0)
       : entries.map((_, index) => index)
 
@@ -833,8 +883,8 @@ export default function WorkoutLogPage() {
                     isCompleted
                       ? 'bg-emerald-500 text-slate-950'
                       : isCurrent
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-slate-800 text-slate-300'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-slate-800 text-slate-300'
                   }`}
                 >
                   {isCompleted ? '✓' : index + 1}
@@ -866,8 +916,8 @@ export default function WorkoutLogPage() {
                 {isRecoveryMode
                   ? recoveryTarget || 'Complete'
                   : currentTarget
-                  ? `${currentTarget.sets} × ${currentTarget.reps}`
-                  : 'Complete'}
+                    ? `${currentTarget.sets} × ${currentTarget.reps}`
+                    : 'Complete'}
               </div>
             </div>
 
@@ -878,6 +928,19 @@ export default function WorkoutLogPage() {
             ) : null}
 
             {suggestion ? <p className="text-xs text-emerald-400">{suggestion.note}</p> : null}
+
+            {coachingTags.length ? (
+              <div className="flex flex-wrap gap-2 pt-2">
+                {coachingTags.map((tag) => (
+                  <div
+                    key={`${currentEntry.name}-${tag}`}
+                    className="rounded-full bg-slate-800 px-3 py-1 text-[11px] font-semibold text-emerald-300"
+                  >
+                    {tag}
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             <p className="text-xs text-slate-400">Next: {nextLabel}</p>
           </div>
@@ -1084,7 +1147,7 @@ export default function WorkoutLogPage() {
               </div>
 
               <div className="space-y-2">
-                <div className="label">Final Set Difficulty</div>
+                <div className="label">Final Set Result</div>
                 <div className="flex flex-wrap gap-2">
                   {difficultyOptions.map((option) => (
                     <button
@@ -1101,6 +1164,10 @@ export default function WorkoutLogPage() {
                     </button>
                   ))}
                 </div>
+                <p className="text-xs text-slate-400">
+                  Use this to reflect how clean the set felt. Clean reps should drive
+                  progression. Sloppy reps should not.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -1190,7 +1257,7 @@ export default function WorkoutLogPage() {
           </button>
 
           {showPartialFinish ? (
-            <div className="rounded-[1.5rem] border border-slate-700 bg-slate-900/40 p-4 space-y-4">
+            <div className="space-y-4 rounded-[1.5rem] border border-slate-700 bg-slate-900/40 p-4">
               <div className="label">Finish Partial Session</div>
 
               <div className="space-y-2">

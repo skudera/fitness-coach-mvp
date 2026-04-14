@@ -60,6 +60,19 @@ export default function CheckInPage() {
     return history[history.length - 1] ?? null
   }, [history])
 
+  const lastCheckInSummary = useMemo(() => {
+    if (!lastCheckIn) return null
+
+    const parts = [
+      `Weight ${lastCheckIn.weight != null ? `${lastCheckIn.weight}` : '—'}`,
+      `BF ${lastCheckIn.body_fat != null ? `${lastCheckIn.body_fat}%` : '—'}`,
+      `Water ${lastCheckIn.water_percent != null ? `${lastCheckIn.water_percent}%` : '—'}`,
+      `Waist ${lastCheckIn.waist != null ? `${lastCheckIn.waist}` : '—'}`,
+    ]
+
+    return parts.join(' · ')
+  }, [lastCheckIn])
+
   async function handleSave() {
     try {
       setSaving(true)
@@ -94,39 +107,16 @@ export default function CheckInPage() {
         <p className="mt-2 text-slate-300">
           Save your latest body metrics and weekly basketball plan.
         </p>
-      </div>
 
-      {lastCheckIn ? (
-        <section className="card space-y-4">
-          <div className="label">Last Check-In Reference</div>
-          <div className="grid grid-cols-2 gap-3 text-sm text-slate-300">
-            <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-              <div className="label">Weight</div>
-              <div className="mt-2 text-white">
-                {lastCheckIn.weight != null ? `${lastCheckIn.weight}` : '—'}
-              </div>
+        {lastCheckInSummary ? (
+          <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Last check-in
             </div>
-            <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-              <div className="label">Body Fat %</div>
-              <div className="mt-2 text-white">
-                {lastCheckIn.body_fat != null ? `${lastCheckIn.body_fat}` : '—'}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-              <div className="label">Water %</div>
-              <div className="mt-2 text-white">
-                {lastCheckIn.water_percent != null ? `${lastCheckIn.water_percent}` : '—'}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-              <div className="label">Waist</div>
-              <div className="mt-2 text-white">
-                {lastCheckIn.waist != null ? `${lastCheckIn.waist}` : '—'}
-              </div>
-            </div>
+            <div className="mt-2 text-sm text-slate-300">{lastCheckInSummary}</div>
           </div>
-        </section>
-      ) : null}
+        ) : null}
+      </div>
 
       <section className="card space-y-4">
         <div className="grid grid-cols-2 gap-3">
