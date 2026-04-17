@@ -8,6 +8,7 @@ import {
   loadCompletedSessionsFromSupabase,
   loadTodayCheckInFromSupabase,
   loadTodayWorkoutRecordFromSupabase,
+  loadWorkoutHistoryBundleFromSupabase,
   getLocalDateString,
   getTomorrowWorkoutLabel,
   getWeeklySettings,
@@ -172,13 +173,29 @@ function buildCoachContent(params: {
     }
   }
 
+  if (todayWorkoutRecord?.status === 'completed_partial') {
+    return {
+      title: 'Coach',
+      body: `Today’s workout was logged as a partial completion. That still keeps the habit alive and gives you useful training data.`,
+      bullets: [
+        todayWorkoutRecord.outcome_note
+          ? `Why it ended early: ${todayWorkoutRecord.outcome_note}`
+          : 'You still moved the week forward.',
+        'Use the log to learn what got done instead of treating the day like a loss.',
+        `Next up: ${nextWorkoutLabel}.`,
+      ],
+    }
+  }
+
   if (todayWorkoutRecord?.status === 'alternative_completed') {
     return {
       title: 'Coach',
       body: `Today was logged as an alternative workout, which is still a useful way to keep momentum moving when the original plan does not fit.`,
       bullets: [
         `Alternative: ${todayWorkoutRecord.alternative_reason?.replaceAll('_', ' ') ?? 'logged'}.`,
-        todayWorkoutRecord.outcome_note ? `Note: ${todayWorkoutRecord.outcome_note}` : 'Good job making the day work.',
+        todayWorkoutRecord.outcome_note
+          ? `Note: ${todayWorkoutRecord.outcome_note}`
+          : 'Good job making the day work.',
         `Next up: ${nextWorkoutLabel}.`,
       ],
     }
@@ -190,7 +207,9 @@ function buildCoachContent(params: {
       body: `Today’s workout was marked as missed. Log the day honestly, reset cleanly, and be ready for the next scheduled session.`,
       bullets: [
         `Reason: ${todayWorkoutRecord.miss_reason?.replaceAll('_', ' ') ?? 'logged'}.`,
-        todayWorkoutRecord.outcome_note ? `Note: ${todayWorkoutRecord.outcome_note}` : 'One missed day does not erase momentum.',
+        todayWorkoutRecord.outcome_note
+          ? `Note: ${todayWorkoutRecord.outcome_note}`
+          : 'One missed day does not erase momentum.',
         `Next up: ${nextWorkoutLabel}.`,
       ],
     }
@@ -283,6 +302,7 @@ export default function HomePage() {
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([])
   const [todayCheckIn, setTodayCheckIn] = useState<BodyMetricRow | null>(null)
   const [sessions, setSessions] = useState<CompletedSessionRow[]>([])
+  const [workouts, setWorkouts] = useState<WorkoutRow[]>([])
   const [todayWorkoutRecord, setTodayWorkoutRecord] = useState<WorkoutRow | null>(null)
   const [basketballStatus, setBasketballStatus] = useState('unsure')
   const [loading, setLoading] = useState(true)
@@ -292,16 +312,19 @@ export default function HomePage() {
       try {
         const weekStart = getWeekStartDate()
 
-        const [metricRows, sessionRows, todayRow, weekly, todayWorkout] = await Promise.all([
-          loadBodyMetricsHistoryFromSupabase(),
-          loadCompletedSessionsFromSupabase(),
-          loadTodayCheckInFromSupabase(),
-          getWeeklySettings(weekStart),
-          loadTodayWorkoutRecordFromSupabase(),
-        ])
+        const [metricRows, sessionRows, todayRow, weekly, todayWorkout, workoutBundle] =
+          await Promise.all([
+            loadBodyMetricsHistoryFromSupabase(),
+            loadCompletedSessionsFromSupabase(),
+            loadTodayCheckInFromSupabase(),
+            getWeeklySettings(weekStart),
+            loadTodayWorkoutRecordFromSupabase(),
+            loadWorkoutHistoryBundleFromSupabase(),
+          ])
 
         setMetrics(Array.isArray(metricRows) ? metricRows : [])
         setSessions(Array.isArray(sessionRows) ? sessionRows : [])
+        setWorkouts(Array.isArray(workoutBundle?.workouts) ? workoutBundle.workouts : [])
         setTodayCheckIn(todayRow ?? null)
         setTodayWorkoutRecord(todayWorkout ?? null)
         setBasketballStatus(weekly?.basketball_status ?? 'unsure')
@@ -309,6 +332,7 @@ export default function HomePage() {
         console.error('Home load error', error)
         setMetrics([])
         setSessions([])
+        setWorkouts([])
         setTodayCheckIn(null)
         setTodayWorkoutRecord(null)
         setBasketballStatus('unsure')
@@ -320,7 +344,10 @@ export default function HomePage() {
     load()
   }, [])
 
-  const latestMetric = useMemo(() => (metrics.length ? metrics[metrics.length - 1] : null), [metrics])
+  const latestMetric = useMemo(
+    () => (metrics.length ? metrics[metrics.length - 1] : null),
+    [metrics]
+  )
   const oldestMetric = useMemo(() => (metrics.length ? metrics[0] : null), [metrics])
 
   const latestWaist = useMemo(() => {
@@ -338,38 +365,55 @@ export default function HomePage() {
     [sessions]
   )
 
-  const meaningfulSessionDates = useMemo(
-    () => meaningfulSessions.map((session) => session.date),
-    [meaningfulSessions]
-  )
+  const countedWorkoutDates = useMemo(() => {
+    const dates = new Set<string>()
+
+    meaningfulSessions.forEach((session) => {
+      if (session.date) dates.add(session.date)
+    })
+
+    workouts.forEach((workout) => {
+      if (!workout.date) return
+
+      if (workout.status === 'alternative_completed' && workout.counts_for_streak) {
+        dates.add(workout.date)
+      }
+
+      if (workout.status === 'completed_partial') {
+        dates.add(workout.date)
+      }
+    })
+
+    return [...dates]
+  }, [meaningfulSessions, workouts])
 
   const todayCompletedSession = useMemo(
     () => meaningfulSessions.find((session) => session.date === todayDate) ?? null,
     [meaningfulSessions, todayDate]
   )
 
-  const lastMeaningfulWorkout = useMemo(
-    () => meaningfulSessions[0] ?? null,
-    [meaningfulSessions]
-  )
+  const lastMeaningfulWorkout = useMemo(() => {
+    const countedSet = new Set(countedWorkoutDates)
+    return meaningfulSessions.find((session) => countedSet.has(session.date)) ?? meaningfulSessions[0] ?? null
+  }, [meaningfulSessions, countedWorkoutDates])
 
   const nextWorkoutLabel = getTomorrowWorkoutLabel()
 
   const weekProgress = useMemo(() => {
     const weekdays = getCurrentWeekdays()
-    const completedSet = new Set(meaningfulSessionDates)
+    const completedSet = new Set(countedWorkoutDates)
 
     return weekdays.map((day) => ({
       ...day,
       completed: completedSet.has(day.date),
     }))
-  }, [meaningfulSessionDates])
+  }, [countedWorkoutDates])
 
   const perfectWeek = useMemo(() => {
     return weekProgress.every((day) => day.completed)
   }, [weekProgress])
 
-  const streakCount = useMemo(() => getWorkoutStreak(meaningfulSessionDates), [meaningfulSessionDates])
+  const streakCount = useMemo(() => getWorkoutStreak(countedWorkoutDates), [countedWorkoutDates])
 
   const coach = useMemo(
     () =>
@@ -401,6 +445,7 @@ export default function HomePage() {
 
   const todayAlternative = todayWorkoutRecord?.status === 'alternative_completed'
   const todayMissed = todayWorkoutRecord?.status === 'missed'
+  const todayPartial = todayWorkoutRecord?.status === 'completed_partial'
 
   return (
     <div className="space-y-6 pb-6">
@@ -454,7 +499,9 @@ export default function HomePage() {
         <Link
           href="/checkin"
           className={`block w-full rounded-[1.75rem] px-5 py-5 text-center text-[1rem] font-semibold transition ${
-            todayCheckIn ? 'bg-slate-800 text-slate-100 hover:bg-slate-700' : 'bg-white text-slate-900 hover:bg-slate-100'
+            todayCheckIn
+              ? 'bg-slate-800 text-slate-100 hover:bg-slate-700'
+              : 'bg-white text-slate-900 hover:bg-slate-100'
           }`}
         >
           {todayCheckIn ? 'Check-In Complete ✅' : 'Monday Check-In'}
@@ -466,7 +513,7 @@ export default function HomePage() {
         >
           {todayCompletedSession
             ? 'Review Workout'
-            : todayAlternative || todayMissed
+            : todayAlternative || todayMissed || todayPartial
               ? 'View Today'
               : 'Start Workout'}
         </Link>
@@ -490,6 +537,21 @@ export default function HomePage() {
               Next: {nextWorkoutLabel}
             </div>
           </>
+        ) : todayPartial ? (
+          <>
+            <div className="mt-3 text-[1.45rem] font-semibold leading-tight text-white">
+              {todayPlan.label}: Partial Workout Logged
+            </div>
+            <div className="mt-3 text-[1rem] font-semibold text-emerald-400">
+              Partial completed ✅
+            </div>
+            <div className="mt-3 text-[0.95rem] text-slate-300">
+              {todayWorkoutRecord?.outcome_note ?? 'Session saved with partial completion'}
+            </div>
+            <div className="mt-3 text-[0.9rem] text-slate-400">
+              Next: {nextWorkoutLabel}
+            </div>
+          </>
         ) : todayAlternative ? (
           <>
             <div className="mt-3 text-[1.45rem] font-semibold leading-tight text-white">
@@ -499,7 +561,8 @@ export default function HomePage() {
               Alternative completed ✅
             </div>
             <div className="mt-3 text-[0.95rem] text-slate-300">
-              {todayWorkoutRecord?.alternative_reason?.replaceAll('_', ' ') ?? 'Alternative workout'}
+              {todayWorkoutRecord?.alternative_reason?.replaceAll('_', ' ') ??
+                'Alternative workout'}
             </div>
             <div className="mt-3 text-[0.9rem] text-slate-400">
               Next: {nextWorkoutLabel}
@@ -525,9 +588,7 @@ export default function HomePage() {
             <div className="mt-3 text-[1.6rem] font-semibold leading-tight text-white">
               {todayPlan.label}: {todayPlan.focus}
             </div>
-            <div className="mt-4 text-[1rem] text-slate-300">
-              {todayPlan.duration}
-            </div>
+            <div className="mt-4 text-[1rem] text-slate-300">{todayPlan.duration}</div>
           </>
         )}
       </section>
