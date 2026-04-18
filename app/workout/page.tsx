@@ -416,12 +416,6 @@ export default function WorkoutPage() {
   const basketballHappened = weeklySettings?.basketball_status === 'yes'
   const noBasketball = weeklySettings?.basketball_status === 'no'
 
-  const isRecoveryOverride =
-    fridayOutput === 'gym_anti_office' ||
-    fridayOutput === 'home_anti_office' ||
-    fridayOutput === 'walk_only' ||
-    fridayOutput === 'full_rest'
-
   const canStartFridayWorkout =
     !isFriday ||
     noBasketball ||
@@ -659,7 +653,12 @@ export default function WorkoutPage() {
                   <OptionGroup
                     title="Alternative workout type"
                     value={alternativeReason}
-                    onSelect={(value) => setAlternativeReason(value)}
+                    onSelect={(value) => {
+                      setAlternativeReason(value)
+                      if (value === 'personal_training') {
+                        setCountsForStreak(true)
+                      }
+                    }}
                     options={[
                       { label: 'Home workout', value: 'home_workout' },
                       { label: 'Hotel workout', value: 'hotel_workout' },
@@ -667,6 +666,7 @@ export default function WorkoutPage() {
                       { label: 'Walk only', value: 'walk_only' },
                       { label: 'Basketball only', value: 'basketball_only' },
                       { label: 'Recovery flow', value: 'recovery_flow' },
+                      { label: 'Personal training session', value: 'personal_training' },
                       { label: 'Other', value: 'other' },
                     ]}
                   />
