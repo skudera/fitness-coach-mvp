@@ -284,7 +284,20 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
   return tags
 }
 
-const difficultyOptions = ['Easy', 'Good', 'Hard', 'Too Hard']
+function getFormQualityHint(value: string) {
+  switch (value) {
+    case 'Clean':
+      return 'Progression can move forward when reps and control are there.'
+    case 'Slight Breakdown':
+      return 'Own this load first. Next time should likely hold steady.'
+    case 'Breakdown':
+      return 'This crossed the form governor. Next time should likely reduce load.'
+    default:
+      return 'Rate the final set by movement quality, not effort alone.'
+  }
+}
+
+const formQualityOptions = ['Clean', 'Slight Breakdown', 'Breakdown']
 const discomfortLocationOptions = ['None', 'Shoulder', 'Back', 'Other']
 const discomfortSeverityOptions = ['Low', 'Medium', 'High']
 const partialFinishReasons = ['Ran out of time', 'Low energy', 'Discomfort', 'Other']
@@ -1147,16 +1160,20 @@ export default function WorkoutLogPage() {
               </div>
 
               <div className="space-y-2">
-                <div className="label">Final Set Result</div>
+                <div className="label">Final Set Form Quality</div>
                 <div className="flex flex-wrap gap-2">
-                  {difficultyOptions.map((option) => (
+                  {formQualityOptions.map((option) => (
                     <button
                       key={option}
                       type="button"
                       onClick={() => updateCurrentField('difficulty', option)}
                       className={`rounded-full px-3 py-2 text-xs font-semibold ${
                         currentEntry.difficulty === option
-                          ? 'bg-emerald-500 text-slate-950'
+                          ? option === 'Breakdown'
+                            ? 'bg-rose-500 text-white'
+                            : option === 'Slight Breakdown'
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'bg-emerald-500 text-slate-950'
                           : 'bg-slate-800 text-slate-200'
                       }`}
                     >
@@ -1165,8 +1182,7 @@ export default function WorkoutLogPage() {
                   ))}
                 </div>
                 <p className="text-xs text-slate-400">
-                  Use this to reflect how clean the set felt. Clean reps should drive
-                  progression. Sloppy reps should not.
+                  {getFormQualityHint(currentEntry.difficulty)}
                 </p>
               </div>
 
