@@ -13,6 +13,8 @@ type ExerciseCategory =
   | 'accessory'
   | 'isolation'
 
+type FormQuality = 'Clean' | 'Slight Breakdown' | 'Breakdown'
+
 export function parseRepRange(value: string) {
   const match = value.match(/(\d+)\D+(\d+)/)
   if (match) {
@@ -33,6 +35,8 @@ export function getExerciseCategory(exerciseName: string): ExerciseCategory {
 
   if (
     name.includes('press machine') ||
+    name.includes('smith machine incline chest press') ||
+    name.includes('vertical traction machine') ||
     name.includes('pulldown') ||
     name.includes('row') ||
     name.includes('shoulder press')
@@ -44,7 +48,8 @@ export function getExerciseCategory(exerciseName: string): ExerciseCategory {
     name.includes('seated hamstring curl') ||
     name.includes('hip thrust') ||
     name.includes('back extension') ||
-    name.includes('assisted dip')
+    name.includes('assisted dip') ||
+    name.includes('glute bridge')
   ) {
     return 'accessory'
   }
@@ -66,7 +71,8 @@ function isHalfStepCableStackExercise(exerciseName: string) {
   return (
     name.includes('face pull') ||
     name.includes('triceps pressdown') ||
-    name.includes('cable curl')
+    name.includes('cable curl') ||
+    name.includes('straight arm pulldown')
   )
 }
 
@@ -97,13 +103,15 @@ function getPreviousHalfStepCableWeight(weight: number) {
 function getFixedStep(exerciseName: string): number | null {
   const name = exerciseName.toLowerCase()
 
+  if (name.includes('vertical traction machine')) return 15
   if (name.includes('lat pulldown')) return 15
   if (name.includes('seated row machine')) return 15
-  if (name.includes('chest press machine')) return 10
+  if (name.includes('flat chest press machine')) return 10
+  if (name.includes('smith machine incline chest press')) return 10
   if (name.includes('seated hamstring curl')) return 10
   if (name.includes('leg extension')) return 10
   if (name.includes('ab machine')) return 10
-  if (name.includes('calf raise')) return 10
+  if (name.includes('rotary calf')) return 10
   if (name.includes('cable')) return 5
 
   return null
@@ -162,7 +170,10 @@ function getNextAllowedWeight(
     return currentWeight + fixedStep
   }
 
-  return currentWeight + getFlexibleProgressionStep(exerciseName, category, 'up', topReps, repHigh)
+  return (
+    currentWeight +
+    getFlexibleProgressionStep(exerciseName, category, 'up', topReps, repHigh)
+  )
 }
 
 function getPreviousAllowedWeight(
@@ -187,7 +198,8 @@ function getPreviousAllowedWeight(
 
   return Math.max(
     0,
-    currentWeight - getFlexibleProgressionStep(exerciseName, category, 'down', topReps, repHigh)
+    currentWeight -
+      getFlexibleProgressionStep(exerciseName, category, 'down', topReps, repHigh)
   )
 }
 
@@ -243,13 +255,28 @@ function getIncrementText(
   repHigh: number
 ) {
   if (isCableLateralRaise(exerciseName)) return 'machine-aware progression ladder'
-  if (isHalfStepCableStackExercise(exerciseName)) return '7.5 lb start, then 5 lb cable ladder'
+  if (isHalfStepCableStackExercise(exerciseName))
+    return '7.5 lb start, then 5 lb cable ladder'
 
   const fixedStep = getFixedStep(exerciseName)
   if (fixedStep) return `${fixedStep} lb stack jump`
 
   const step = getFlexibleProgressionStep(exerciseName, category, 'up', topReps, repHigh)
   return `${step} lb progression`
+}
+
+function normalizeFormQuality(lastDifficulty: string | null): FormQuality | null {
+  if (!lastDifficulty) return null
+
+  if (lastDifficulty === 'Clean') return 'Clean'
+  if (lastDifficulty === 'Slight Breakdown') return 'Slight Breakdown'
+  if (lastDifficulty === 'Breakdown') return 'Breakdown'
+
+  if (lastDifficulty === 'Easy' || lastDifficulty === 'Good') return 'Clean'
+  if (lastDifficulty === 'Hard') return 'Slight Breakdown'
+  if (lastDifficulty === 'Too Hard') return 'Breakdown'
+
+  return null
 }
 
 export function getMachineAwareSuggestion(input: {
@@ -262,26 +289,57 @@ export function getMachineAwareSuggestion(input: {
   const { exerciseName, targetRepRange, topWeight, topReps, lastDifficulty } = input
   const category = getExerciseCategory(exerciseName)
   const repRange = parseRepRange(targetRepRange)
+  const formQuality = normalizeFormQuality(lastDifficulty)
 
   let workingWeight = topWeight
-  let note = 'Holding at last session weight until reps earn progression'
+  let note = 'Holding at last session weight until reps and form earn progression'
 
   const hitTopOfRange = topReps >= repRange.high
   const belowRange = topReps < repRange.low
   const withinRangeNotReady = topReps >= repRange.low && topReps < repRange.high
 
-  if ((lastDifficulty === 'Easy' || lastDifficulty === 'Good') && hitTopOfRange) {
-    workingWeight = getNextAllowedWeight(exerciseName, category, topWeight, topReps, repRange.high)
-    note = 'Increased because prior reps reached the top of the target range'
-  } else if (lastDifficulty === 'Too Hard' && belowRange) {
-    workingWeight = getPreviousAllowedWeight(exerciseName, category, topWeight, topReps, repRange.high)
-    note = 'Reduced because prior reps missed the target range and felt too hard'
-  } else if (withinRangeNotReady) {
+  if (formQuality === 'Breakdown') {
+    workingWeight = getPreviousAllowedWeight(
+      exerciseName,
+      category,
+      topWeight,
+      topReps,
+      repRange.high
+    )
+    note = 'Reduced because the prior top set broke down. Rebuild with cleaner mechanics.'
+  } else if (formQuality === 'Slight Breakdown') {
     workingWeight = topWeight
-    note = 'Holding because prior reps only reached the lower or middle part of the range'
+    note = 'Holding because the prior top set showed slight breakdown. Own this load first.'
+  } else if (formQuality === 'Clean' && hitTopOfRange) {
+    workingWeight = getNextAllowedWeight(
+      exerciseName,
+      category,
+      topWeight,
+      topReps,
+      repRange.high
+    )
+    note = 'Increased because prior reps reached the top of the range with clean form.'
+  } else if (formQuality === 'Clean' && withinRangeNotReady) {
+    workingWeight = topWeight
+    note = 'Holding because form was clean, but reps have not yet earned progression.'
+  } else if (formQuality === 'Clean' && belowRange) {
+    workingWeight = topWeight
+    note = 'Holding because form stayed clean, but reps missed the target range.'
+  } else if (!formQuality && hitTopOfRange) {
+    workingWeight = getNextAllowedWeight(
+      exerciseName,
+      category,
+      topWeight,
+      topReps,
+      repRange.high
+    )
+    note = 'Increased because prior reps reached the top of the target range.'
+  } else if (!formQuality && withinRangeNotReady) {
+    workingWeight = topWeight
+    note = 'Holding because prior reps only reached the lower or middle part of the range.'
   } else if (belowRange) {
     workingWeight = topWeight
-    note = 'Holding because prior reps missed the target range'
+    note = 'Holding because prior reps missed the target range.'
   }
 
   return {
