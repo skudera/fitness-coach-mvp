@@ -35,16 +35,16 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
     case 1:
       return {
         dayName: 'Monday',
-        focus: 'Chest / Shoulders / Biceps / Cardio',
+        focus: 'Chest / Shoulders / Biceps / Core / Cardio',
         estimatedMinutes: '75 min planned',
         warmup: '5 min treadmill + shoulder mobility',
         exercises: [
-          'Incline Chest Press Machine',
+          'Smith Machine Incline Chest Press',
           'Flat Chest Press Machine',
           'Cable Lateral Raise',
           'Rear Delt Machine',
-          'Pec Deck Fly',
           'Cable Curl',
+          'Weighted Dead-Bug',
         ],
         cardio: 'Elliptical – 12 min',
         restDay: false,
@@ -57,7 +57,7 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
         estimatedMinutes: '75 min planned',
         warmup: '5 min treadmill + band work',
         exercises: [
-          'Neutral Grip Lat Pulldown',
+          'Vertical Traction Machine',
           'Seated Row Machine',
           'Straight Arm Pulldown',
           'Face Pull',
@@ -89,16 +89,16 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
     case 4:
       return {
         dayName: 'Thursday',
-        focus: 'Upper Mixed / Basketball',
+        focus: 'Upper Mixed / Core / Basketball',
         estimatedMinutes: '70 min planned',
         warmup: '5 min treadmill + upper mobility',
         exercises: [
           'Flat Chest Press Machine',
-          'Neutral Grip Lat Pulldown',
+          'Vertical Traction Machine',
           'Cable Lateral Raise',
           'Face Pull',
           'Cable Curl',
-          'Triceps Pressdown',
+          "Captain's Chair Leg Raise",
         ],
         cardio: 'Cardio optional depending on basketball',
         restDay: false,
@@ -161,7 +161,9 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
   const name = exerciseName.toLowerCase()
 
   if (
-    name.includes('press machine') ||
+    name.includes('smith machine incline chest press') ||
+    name.includes('flat chest press machine') ||
+    name.includes('vertical traction machine') ||
     name.includes('pulldown') ||
     name.includes('row') ||
     name.includes('leg press') ||
@@ -186,7 +188,11 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
     return { sets: 3, reps: '8–12' }
   }
 
-  if (name.includes('weighted cable crunch') || name.includes('weighted dead-bug')) {
+  if (
+    name.includes('weighted cable crunch') ||
+    name.includes('weighted dead-bug') ||
+    name.includes("captain's chair")
+  ) {
     return { sets: 3, reps: '8–12' }
   }
 
@@ -211,9 +217,9 @@ export function getExerciseCue(exerciseName: string): string | null {
   const name = exerciseName.toLowerCase()
 
   if (
-    name.includes('incline chest press machine') ||
+    name.includes('smith machine incline chest press') ||
     name.includes('flat chest press machine') ||
-    name.includes('neutral grip lat pulldown') ||
+    name.includes('vertical traction machine') ||
     name.includes('leg press (45')
   ) {
     return '3-sec eccentric'
@@ -231,6 +237,10 @@ export function getExerciseCue(exerciseName: string): string | null {
     return 'Slow control, ribs down'
   }
 
+  if (name.includes("captain's chair")) {
+    return 'Controlled eccentric'
+  }
+
   if (name.includes('glute bridge')) {
     return 'Pause and squeeze at top'
   }
@@ -245,12 +255,12 @@ export function getExerciseCue(exerciseName: string): string | null {
 export function getExerciseSubstitutions(exerciseName: string): string[] {
   const name = exerciseName.toLowerCase()
 
-  if (name.includes('incline chest press machine')) {
+  if (name.includes('smith machine incline chest press')) {
     return ['Flat Chest Press Machine', 'Cable Chest Press', 'Assisted Dip']
   }
 
   if (name.includes('flat chest press machine')) {
-    return ['Incline Chest Press Machine', 'Cable Chest Press', 'Pec Deck Fly']
+    return ['Smith Machine Incline Chest Press', 'Cable Chest Press', 'Pec Deck Fly']
   }
 
   if (name.includes('cable lateral raise')) {
@@ -269,7 +279,7 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
     return ['Overhead Rope Extension', 'Assisted Dip', 'Cable Chest Press']
   }
 
-  if (name.includes('neutral grip lat pulldown')) {
+  if (name.includes('vertical traction machine')) {
     return ['Assisted Pullup', 'Hammer Iso Row', 'Straight Arm Pulldown']
   }
 
@@ -278,7 +288,7 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
   }
 
   if (name.includes('straight arm pulldown')) {
-    return ['Face Pull', 'Cable Row', 'Neutral Grip Lat Pulldown']
+    return ['Face Pull', 'Cable Row', 'Vertical Traction Machine']
   }
 
   if (name.includes('face pull')) {
@@ -290,11 +300,15 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
   }
 
   if (name.includes('weighted cable crunch')) {
-    return ['Ab Machine', 'Roman Chair Leg Raise', 'Plank']
+    return ['Ab Machine', "Captain's Chair Leg Raise", 'Plank']
   }
 
   if (name.includes('weighted dead-bug')) {
-    return ['Ab Machine', 'Cable Crunch', 'Plank']
+    return ['Ab Machine', 'Weighted Cable Crunch', 'Plank']
+  }
+
+  if (name.includes("captain's chair")) {
+    return ['Weighted Cable Crunch', 'Ab Machine', 'Plank']
   }
 
   if (name.includes('leg press (45')) {
@@ -322,7 +336,7 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
   }
 
   if (name.includes('ab machine')) {
-    return ['Weighted Cable Crunch', 'Roman Chair Leg Raise', 'Plank']
+    return ['Weighted Cable Crunch', "Captain's Chair Leg Raise", 'Plank']
   }
 
   if (name.includes('hack squat')) {
@@ -338,7 +352,12 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
 
 export function getExerciseHistoryAliases(exerciseName: string): string[] {
   const map: Record<string, string[]> = {
-    'Incline Chest Press Machine': ['Incline Chest Press Machine', 'Incline DB Press'],
+    'Smith Machine Incline Chest Press': [
+      'Smith Machine Incline Chest Press',
+      'Incline Chest Press Machine',
+      'Incline DB Press',
+      'Smith Incline Press',
+    ],
     'Flat Chest Press Machine': ['Flat Chest Press Machine', 'Machine Chest Press'],
     'Pec Deck Fly': ['Pec Deck Fly', 'Cable Fly', 'Pec Deck'],
     'Cable Fly': ['Cable Fly', 'Pec Deck Fly'],
@@ -347,7 +366,12 @@ export function getExerciseHistoryAliases(exerciseName: string): string[] {
     'Overhead Rope Extension': ['Overhead Rope Extension'],
     'Assisted Dip': ['Assisted Dip', 'Machine Dip'],
 
-    'Neutral Grip Lat Pulldown': ['Neutral Grip Lat Pulldown', 'Lat Pulldown'],
+    'Vertical Traction Machine': [
+      'Vertical Traction Machine',
+      'Neutral Grip Lat Pulldown',
+      'Lat Pulldown',
+      'Vertical Traction',
+    ],
     'Seated Row Machine': ['Seated Row Machine', 'Seated Row'],
     'Hammer Iso Row': ['Hammer Iso Row', 'Hammer Strength Row'],
     'Chest Supported Row': ['Chest Supported Row', 'Chest Supported Row Machine'],
@@ -368,7 +392,7 @@ export function getExerciseHistoryAliases(exerciseName: string): string[] {
       '45-Degree Leg Press',
     ],
     'Seated Leg Press Machine': ['Seated Leg Press Machine', 'Linear Leg Press'],
-    HackSquat: ['Hack Squat', 'Hack Squat or Leg Press'],
+    'Hack Squat': ['Hack Squat', 'Hack Squat or Leg Press'],
     'Leg Extension': ['Leg Extension'],
     'Seated Hamstring Curl': ['Seated Hamstring Curl', 'Hamstring Curl'],
     'Rotary Calf': ['Rotary Calf', 'Seated Calf Raise', 'Calf Raise'],
@@ -382,7 +406,11 @@ export function getExerciseHistoryAliases(exerciseName: string): string[] {
     'Cable Crunch': ['Cable Crunch', 'Weighted Cable Crunch'],
     'Weighted Cable Crunch': ['Weighted Cable Crunch', 'Cable Crunch'],
     'Weighted Dead-Bug': ['Weighted Dead-Bug', 'Dead-Bug', 'Dead Bug'],
-    'Roman Chair Leg Raise': ['Roman Chair Leg Raise', "Captain's Chair"],
+    "Captain's Chair Leg Raise": [
+      "Captain's Chair Leg Raise",
+      'Roman Chair Leg Raise',
+      "Captain's Chair",
+    ],
     Plank: ['Plank'],
     'Cable Curl': ['Cable Curl'],
   }
