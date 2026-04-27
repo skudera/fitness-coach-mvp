@@ -12,9 +12,12 @@ import {
   type FridayOutputType,
 } from '@/lib/recovery-governor'
 import {
-  getWeeklySettings,
+  getEffectiveWorkoutDayNumber,
   getWeekStartDate,
+  getWeeklySettings,
   loadEquipmentPreferences,
+  saveWeeklyDaySwap,
+  clearWeeklyDaySwap,
   type WeeklySettingsRow,
 } from '@/lib/storage-supabase'
 
@@ -56,13 +59,15 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
 
   if (
     name.includes('chest press machine') ||
+    name.includes('smith machine incline chest press') ||
+    name.includes('vertical traction machine') ||
     name.includes('lat pulldown') ||
     name.includes('leg press')
   ) {
     tags.push('3-sec eccentric')
   }
 
-  if (name.includes('cable crunch') || name.includes('ab machine')) {
+  if (name.includes('cable crunch') || name.includes('ab machine') || name.includes('dead-bug')) {
     tags.push('high-tension core')
   }
 
@@ -70,7 +75,7 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
     tags.push('posterior chain priority')
   }
 
-  if (dayName === 'Wednesday' && name.includes('abductor machine')) {
+  if (dayName === 'Wednesday' && (name.includes('glute bridge') || name.includes('abductor machine'))) {
     tags.push('glute support')
   }
 
@@ -80,6 +85,8 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
 
   if (
     name.includes('chest press machine') ||
+    name.includes('smith machine incline chest press') ||
+    name.includes('vertical traction machine') ||
     name.includes('lat pulldown') ||
     name.includes('row') ||
     name.includes('hack squat') ||
@@ -91,6 +98,14 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
   return tags
 }
 
+const weekdayOptions = [
+  { day: 1, label: 'Monday' },
+  { day: 2, label: 'Tuesday' },
+  { day: 3, label: 'Wednesday' },
+  { day: 4, label: 'Thursday' },
+  { day: 5, label: 'Friday' },
+]
+
 export default function PlanPage() {
   const weekPlan = useMemo(() => getWeekPlan(), [])
   const [selectedDay, setSelectedDay] = useState<number>(() => {
@@ -99,6 +114,10 @@ export default function PlanPage() {
   })
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [cardioPreference, setCardioPreference] = useState<string | null>(null)
+  const [showSwapPanel, setShowSwapPanel] = useState(false)
+  const [swapDayOne, setSwapDayOne] = useState<string>('')
+  const [swapDayTwo, setSwapDayTwo] = useState<string>('')
+  const [swapSaving, setSwapSaving] = useState(false)
 
   useEffect(() => {
     async function loadWeekly() {
@@ -121,7 +140,33 @@ export default function PlanPage() {
     loadWeekly()
   }, [])
 
+  useEffect(() => {
+    setSwapDayOne(
+      weeklySettings?.swap_day_one != null ? String(weeklySettings.swap_day_one) : ''
+    )
+    setSwapDayTwo(
+      weeklySettings?.swap_day_two != null ? String(weeklySettings.swap_day_two) : ''
+    )
+  }, [weeklySettings?.swap_day_one, weeklySettings?.swap_day_two])
+
+  const effectiveWeekPlan = useMemo(() => {
+    return weekPlan.map(({ day }) => {
+      const effectiveDay = getEffectiveWorkoutDayNumber(day, weeklySettings)
+      const effectiveWorkout =
+        weekPlan.find((item) => item.day === effectiveDay)?.workout ?? weekPlan[0].workout
+
+      return {
+        day,
+        workout: effectiveWorkout,
+        swappedFrom: effectiveDay !== day ? effectiveDay : null,
+      }
+    })
+  }, [weekPlan, weeklySettings])
+
   const selectedWorkout =
+    effectiveWeekPlan.find((item) => item.day === selectedDay)?.workout ?? effectiveWeekPlan[0].workout
+
+  const selectedBaseWorkout =
     weekPlan.find((item) => item.day === selectedDay)?.workout ?? weekPlan[0].workout
 
   const fridayOutput = useMemo<FridayOutputType | null>(() => {
@@ -158,6 +203,46 @@ export default function PlanPage() {
     [effectiveWorkout.dayName]
   )
 
+  const hasActiveSwap =
+    weeklySettings?.swap_day_one != null &&
+    weeklySettings?.swap_day_two != null &&
+    weeklySettings.swap_day_one !== weeklySettings.swap_day_two
+
+  async function handleSaveSwap() {
+    if (!swapDayOne || !swapDayTwo) return
+    if (swapDayOne === swapDayTwo) return
+
+    try {
+      setSwapSaving(true)
+      const weekStart = getWeekStartDate()
+      await saveWeeklyDaySwap(weekStart, Number(swapDayOne), Number(swapDayTwo))
+      const refreshed = await getWeeklySettings(weekStart)
+      setWeeklySettings(refreshed)
+      setShowSwapPanel(false)
+    } catch (error) {
+      console.error('Save day swap error', error)
+    } finally {
+      setSwapSaving(false)
+    }
+  }
+
+  async function handleClearSwap() {
+    try {
+      setSwapSaving(true)
+      const weekStart = getWeekStartDate()
+      await clearWeeklyDaySwap(weekStart)
+      const refreshed = await getWeeklySettings(weekStart)
+      setWeeklySettings(refreshed)
+      setSwapDayOne('')
+      setSwapDayTwo('')
+      setShowSwapPanel(false)
+    } catch (error) {
+      console.error('Clear day swap error', error)
+    } finally {
+      setSwapSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-6 pb-6">
       <div>
@@ -169,9 +254,92 @@ export default function PlanPage() {
       </div>
 
       <section className="card space-y-4">
-        <div className="label">This Week</div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="label">This Week</div>
+          <button
+            type="button"
+            onClick={() => setShowSwapPanel((prev) => !prev)}
+            className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-slate-700"
+          >
+            {showSwapPanel ? 'Close Swap' : 'Swap Days'}
+          </button>
+        </div>
+
+        {hasActiveSwap ? (
+          <div className="rounded-2xl border border-emerald-500/30 bg-slate-900/40 p-4">
+            <div className="label">Active Weekly Swap</div>
+            <p className="mt-2 text-sm text-slate-100">
+              {weekdayOptions.find((option) => option.day === weeklySettings?.swap_day_one)?.label} swapped with{' '}
+              {weekdayOptions.find((option) => option.day === weeklySettings?.swap_day_two)?.label}.
+            </p>
+          </div>
+        ) : null}
+
+        {showSwapPanel ? (
+          <div className="space-y-4 rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
+            <div className="label">Swap Two Workout Days</div>
+            <p className="text-sm text-slate-300">
+              This changes the current week only. Your default template stays the same.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="label mb-2">Day one</div>
+                <select
+                  value={swapDayOne}
+                  onChange={(e) => setSwapDayOne(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white"
+                >
+                  <option value="">Select day</option>
+                  {weekdayOptions.map((option) => (
+                    <option key={`swap-one-${option.day}`} value={option.day}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="label mb-2">Day two</div>
+                <select
+                  value={swapDayTwo}
+                  onChange={(e) => setSwapDayTwo(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white"
+                >
+                  <option value="">Select day</option>
+                  {weekdayOptions.map((option) => (
+                    <option key={`swap-two-${option.day}`} value={option.day}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={handleSaveSwap}
+                disabled={swapSaving || !swapDayOne || !swapDayTwo || swapDayOne === swapDayTwo}
+                className="rounded-[1.25rem] bg-emerald-500 px-4 py-4 text-center text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
+              >
+                {swapSaving ? 'Saving…' : 'Save Swap'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearSwap}
+                disabled={swapSaving || !hasActiveSwap}
+                className="rounded-[1.25rem] bg-slate-800 px-4 py-4 text-center text-sm font-semibold text-slate-100 transition hover:bg-slate-700 disabled:opacity-50"
+              >
+                Clear Swap
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-5 gap-2">
-          {weekPlan.map(({ day, workout }) => {
+          {effectiveWeekPlan.map(({ day, workout, swappedFrom }) => {
             const active = selectedDay === day
             return (
               <button
@@ -184,7 +352,12 @@ export default function PlanPage() {
                     : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
                 }`}
               >
-                {workout.dayName.slice(0, 3)}
+                <div>{['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'][day]}</div>
+                {swappedFrom != null ? (
+                  <div className="mt-1 text-[10px] font-medium opacity-80">
+                    from {workout.dayName.slice(0, 3)}
+                  </div>
+                ) : null}
               </button>
             )
           })}
@@ -195,6 +368,15 @@ export default function PlanPage() {
         <div className="label">{effectiveWorkout.dayName}</div>
         <h2 className="text-2xl font-semibold text-white">{effectiveWorkout.focus}</h2>
         <p className="text-slate-300">{effectiveWorkout.estimatedMinutes}</p>
+
+        {selectedBaseWorkout.dayName !== effectiveWorkout.dayName ? (
+          <div className="rounded-2xl border border-amber-500/30 bg-slate-900/40 p-4">
+            <div className="label">Day Swap Applied</div>
+            <p className="mt-2 text-slate-100">
+              This calendar day normally shows <span className="font-semibold">{selectedBaseWorkout.dayName}</span>, but this week it is using <span className="font-semibold">{effectiveWorkout.dayName}</span>.
+            </p>
+          </div>
+        ) : null}
 
         {dayEmphasis ? (
           <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">

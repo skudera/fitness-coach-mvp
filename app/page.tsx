@@ -3,18 +3,21 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { MetricCard } from '@/components/MetricCard'
+import { getWorkoutForDay } from '@/lib/workout-data'
 import {
   loadBodyMetricsHistoryFromSupabase,
   loadCompletedSessionsFromSupabase,
   loadTodayCheckInFromSupabase,
   loadTodayWorkoutRecordFromSupabase,
   loadWorkoutHistoryBundleFromSupabase,
+  getEffectiveWorkoutDayNumber,
   getLocalDateString,
   getTomorrowWorkoutLabel,
   getWeeklySettings,
   getWeekStartDate,
   type CompletedSessionRow,
   type WorkoutRow,
+  type WeeklySettingsRow,
 } from '@/lib/storage-supabase'
 
 type BodyMetricRow = {
@@ -43,26 +46,15 @@ function getGreeting() {
   return 'Good evening'
 }
 
-function getTodayPlan() {
+function getTodayPlan(weeklySettings?: WeeklySettingsRow | null) {
   const day = new Date().getDay()
+  const effectiveDay = getEffectiveWorkoutDayNumber(day, weeklySettings)
+  const workout = getWorkoutForDay(effectiveDay)
 
-  switch (day) {
-    case 0:
-      return { label: 'Sunday', focus: 'Recovery / Mobility', duration: '20–30 min optional' }
-    case 1:
-      return { label: 'Monday', focus: 'Chest / Shoulders / Cardio', duration: '74 min planned' }
-    case 2:
-      return { label: 'Tuesday', focus: 'Back / Core / Cardio', duration: '72 min planned' }
-    case 3:
-      return { label: 'Wednesday', focus: 'Legs / Core / Cardio', duration: '75 min planned' }
-    case 4:
-      return { label: 'Thursday', focus: 'Upper Mixed / Basketball', duration: 'Flexible day' }
-    case 5:
-      return { label: 'Friday', focus: 'Lower / Recovery Conditioning', duration: '70 min planned' }
-    case 6:
-      return { label: 'Saturday', focus: 'Optional Recovery / Mobility', duration: 'Optional' }
-    default:
-      return { label: 'Today', focus: 'Workout', duration: 'Planned' }
+  return {
+    label: workout.dayName,
+    focus: workout.focus,
+    duration: workout.estimatedMinutes || 'Planned',
   }
 }
 
@@ -125,8 +117,9 @@ function buildCoachContent(params: {
   streakCount: number
   basketballStatus: string
   todayPlan: { label: string; focus: string; duration: string }
+  nextWorkoutLabel: string
   loading: boolean
-}): CoachContent {
+}) {
   const {
     latestMetric,
     oldestMetric,
@@ -137,12 +130,12 @@ function buildCoachContent(params: {
     streakCount,
     basketballStatus,
     todayPlan,
+    nextWorkoutLabel,
     loading,
   } = params
 
   const isMonday = new Date().getDay() === 1
   const isThursday = new Date().getDay() === 4
-  const nextWorkoutLabel = getTomorrowWorkoutLabel()
 
   if (loading) {
     return {
@@ -304,6 +297,7 @@ export default function HomePage() {
   const [sessions, setSessions] = useState<CompletedSessionRow[]>([])
   const [workouts, setWorkouts] = useState<WorkoutRow[]>([])
   const [todayWorkoutRecord, setTodayWorkoutRecord] = useState<WorkoutRow | null>(null)
+  const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [basketballStatus, setBasketballStatus] = useState('unsure')
   const [loading, setLoading] = useState(true)
 
@@ -327,6 +321,7 @@ export default function HomePage() {
         setWorkouts(Array.isArray(workoutBundle?.workouts) ? workoutBundle.workouts : [])
         setTodayCheckIn(todayRow ?? null)
         setTodayWorkoutRecord(todayWorkout ?? null)
+        setWeeklySettings(weekly ?? null)
         setBasketballStatus(weekly?.basketball_status ?? 'unsure')
       } catch (error) {
         console.error('Home load error', error)
@@ -335,6 +330,7 @@ export default function HomePage() {
         setWorkouts([])
         setTodayCheckIn(null)
         setTodayWorkoutRecord(null)
+        setWeeklySettings(null)
         setBasketballStatus('unsure')
       } finally {
         setLoading(false)
@@ -357,7 +353,7 @@ export default function HomePage() {
   }, [metrics])
 
   const greeting = getGreeting()
-  const todayPlan = getTodayPlan()
+  const todayPlan = useMemo(() => getTodayPlan(weeklySettings), [weeklySettings])
   const todayDate = getLocalDateString()
 
   const meaningfulSessions = useMemo(
@@ -394,10 +390,17 @@ export default function HomePage() {
 
   const lastMeaningfulWorkout = useMemo(() => {
     const countedSet = new Set(countedWorkoutDates)
-    return meaningfulSessions.find((session) => countedSet.has(session.date)) ?? meaningfulSessions[0] ?? null
+    return (
+      meaningfulSessions.find((session) => countedSet.has(session.date)) ??
+      meaningfulSessions[0] ??
+      null
+    )
   }, [meaningfulSessions, countedWorkoutDates])
 
-  const nextWorkoutLabel = getTomorrowWorkoutLabel()
+  const nextWorkoutLabel = useMemo(
+    () => getTomorrowWorkoutLabel(weeklySettings),
+    [weeklySettings]
+  )
 
   const weekProgress = useMemo(() => {
     const weekdays = getCurrentWeekdays()
@@ -427,6 +430,7 @@ export default function HomePage() {
         streakCount,
         basketballStatus,
         todayPlan,
+        nextWorkoutLabel,
         loading,
       }),
     [
@@ -439,6 +443,7 @@ export default function HomePage() {
       streakCount,
       basketballStatus,
       todayPlan,
+      nextWorkoutLabel,
       loading,
     ]
   )
@@ -446,6 +451,10 @@ export default function HomePage() {
   const todayAlternative = todayWorkoutRecord?.status === 'alternative_completed'
   const todayMissed = todayWorkoutRecord?.status === 'missed'
   const todayPartial = todayWorkoutRecord?.status === 'completed_partial'
+  const hasActiveSwap =
+    weeklySettings?.swap_day_one != null &&
+    weeklySettings?.swap_day_two != null &&
+    weeklySettings.swap_day_one !== weeklySettings.swap_day_two
 
   return (
     <div className="space-y-6 pb-6">
@@ -460,6 +469,15 @@ export default function HomePage() {
           Today&apos;s plan is already adjusted. No decisions needed.
         </p>
       </div>
+
+      {hasActiveSwap ? (
+        <section className="card space-y-3 border border-emerald-500/30">
+          <div className="label">Weekly Swap Active</div>
+          <p className="text-slate-100">
+            This week is using a temporary day swap, so today and tomorrow may not match the normal template.
+          </p>
+        </section>
+      ) : null}
 
       <section className="card space-y-4">
         <div className="label">Momentum</div>

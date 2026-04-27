@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { getWorkoutForToday, getTargetForExercise } from '@/lib/workout-data'
+import { getWorkoutForDay, getTargetForExercise } from '@/lib/workout-data'
 import {
   detectBasketballLoad,
   getFridayOutputLabel,
@@ -17,6 +17,7 @@ import {
   type FridaySleepQuality,
 } from '@/lib/recovery-governor'
 import {
+  getEffectiveWorkoutDayNumber,
   getLocalDateString,
   getWeekStartDate,
   getWeeklySettings,
@@ -135,13 +136,15 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
 
   if (
     name.includes('chest press machine') ||
+    name.includes('smith machine incline chest press') ||
+    name.includes('vertical traction machine') ||
     name.includes('lat pulldown') ||
     name.includes('leg press')
   ) {
     tags.push('3-sec eccentric')
   }
 
-  if (name.includes('cable crunch') || name.includes('ab machine')) {
+  if (name.includes('cable crunch') || name.includes('ab machine') || name.includes('dead-bug')) {
     tags.push('high-tension core')
   }
 
@@ -149,7 +152,7 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
     tags.push('posterior chain priority')
   }
 
-  if (dayName === 'Wednesday' && name.includes('abductor machine')) {
+  if (dayName === 'Wednesday' && (name.includes('glute bridge') || name.includes('abductor machine'))) {
     tags.push('glute support')
   }
 
@@ -159,6 +162,8 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
 
   if (
     name.includes('chest press machine') ||
+    name.includes('smith machine incline chest press') ||
+    name.includes('vertical traction machine') ||
     name.includes('lat pulldown') ||
     name.includes('row') ||
     name.includes('hack squat') ||
@@ -197,7 +202,8 @@ function getFridayUnlockMessage(params: {
 }
 
 export default function WorkoutPage() {
-  const baseWorkout = getWorkoutForToday()
+  const todayDay = new Date().getDay()
+
   const [hasInProgressWorkout, setHasInProgressWorkout] = useState(false)
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [cardioPreference, setCardioPreference] = useState<string | null>(null)
@@ -221,10 +227,8 @@ export default function WorkoutPage() {
     async function load() {
       try {
         const date = getLocalDateString()
-        const saved = loadWorkoutProgress(date, baseWorkout.dayName)
-        setHasInProgressWorkout(Boolean(saved))
-
         const weekStart = getWeekStartDate()
+
         const [weekly, sessions, prefs, todayRecord] = await Promise.all([
           getWeeklySettings(weekStart),
           loadCompletedSessionsFromSupabase(),
@@ -235,6 +239,11 @@ export default function WorkoutPage() {
         setWeeklySettings(weekly ?? null)
         setCardioPreference(prefs?.cardio_preference ?? null)
         setTodayWorkoutRecord(todayRecord ?? null)
+
+        const effectiveDay = getEffectiveWorkoutDayNumber(todayDay, weekly ?? null)
+        const effectiveWorkout = getWorkoutForDay(effectiveDay)
+        const saved = loadWorkoutProgress(date, effectiveWorkout.dayName)
+        setHasInProgressWorkout(Boolean(saved))
 
         const todays = (sessions ?? []).filter(
           (session) => session.date === date && (session.duration_minutes ?? 0) >= 5
@@ -253,7 +262,7 @@ export default function WorkoutPage() {
     }
 
     load()
-  }, [baseWorkout.dayName])
+  }, [todayDay])
 
   useEffect(() => {
     setMinutesInput(
@@ -325,6 +334,16 @@ export default function WorkoutPage() {
       basketball_avg_hr: avgHrInput.trim() ? Number(avgHrInput) : null,
     })
   }
+
+  const effectiveDay = useMemo(
+    () => getEffectiveWorkoutDayNumber(todayDay, weeklySettings),
+    [todayDay, weeklySettings]
+  )
+
+  const baseWorkout = useMemo(
+    () => getWorkoutForDay(effectiveDay),
+    [effectiveDay]
+  )
 
   async function handleSaveOutcome() {
     const date = getLocalDateString()

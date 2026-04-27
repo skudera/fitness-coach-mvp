@@ -85,6 +85,8 @@ export type WeeklySettingsRow = {
   basketball_avg_hr?: number | null
   friday_sleep_quality?: string | null
   friday_movement_feel?: string | null
+  swap_day_one?: number | null
+  swap_day_two?: number | null
   created_at?: string
 }
 
@@ -95,11 +97,7 @@ export function getLocalDateString(date = new Date()) {
   return `${year}-${month}-${day}`
 }
 
-export function getTomorrowWorkoutLabel() {
-  const tomorrow = new Date()
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const day = tomorrow.getDay()
-
+export function getWorkoutLabelForDay(day: number) {
   switch (day) {
     case 0:
       return 'Sunday: Recovery / Mobility'
@@ -118,6 +116,38 @@ export function getTomorrowWorkoutLabel() {
     default:
       return 'Next workout'
   }
+}
+
+export function getEffectiveWorkoutDayNumber(
+  day: number,
+  weeklySettings?: WeeklySettingsRow | null
+) {
+  const swapDayOne = weeklySettings?.swap_day_one ?? null
+  const swapDayTwo = weeklySettings?.swap_day_two ?? null
+
+  if (
+    swapDayOne == null ||
+    swapDayTwo == null ||
+    swapDayOne === swapDayTwo ||
+    swapDayOne < 1 ||
+    swapDayOne > 5 ||
+    swapDayTwo < 1 ||
+    swapDayTwo > 5
+  ) {
+    return day
+  }
+
+  if (day === swapDayOne) return swapDayTwo
+  if (day === swapDayTwo) return swapDayOne
+  return day
+}
+
+export function getTomorrowWorkoutLabel(weeklySettings?: WeeklySettingsRow | null) {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const tomorrowDay = tomorrow.getDay()
+  const effectiveDay = getEffectiveWorkoutDayNumber(tomorrowDay, weeklySettings)
+  return getWorkoutLabelForDay(effectiveDay)
 }
 
 export function getWeekStartDate() {
@@ -435,6 +465,8 @@ export async function saveWeeklyBasketball(weekStart: string, status: string) {
     basketball_avg_hr: current?.basketball_avg_hr ?? null,
     friday_sleep_quality: current?.friday_sleep_quality ?? null,
     friday_movement_feel: current?.friday_movement_feel ?? null,
+    swap_day_one: current?.swap_day_one ?? null,
+    swap_day_two: current?.swap_day_two ?? null,
   }
 
   const { error } = await supabase
@@ -468,6 +500,8 @@ export async function saveWeeklyRecoverySettings(
       updates.friday_sleep_quality ?? current?.friday_sleep_quality ?? null,
     friday_movement_feel:
       updates.friday_movement_feel ?? current?.friday_movement_feel ?? null,
+    swap_day_one: updates.swap_day_one ?? current?.swap_day_one ?? null,
+    swap_day_two: updates.swap_day_two ?? current?.swap_day_two ?? null,
   }
 
   const { error } = await supabase
@@ -478,6 +512,44 @@ export async function saveWeeklyRecoverySettings(
     console.error('weekly recovery settings save error', error)
     throw error
   }
+}
+
+export async function saveWeeklyDaySwap(
+  weekStart: string,
+  dayOne: number | null,
+  dayTwo: number | null
+) {
+  const userId = await requireUserId()
+  const current = await getWeeklySettings(weekStart)
+
+  const payload: WeeklySettingsRow = {
+    user_id: userId,
+    week_start: weekStart,
+    basketball_status: current?.basketball_status ?? 'unsure',
+    basketball_timing: current?.basketball_timing ?? null,
+    basketball_intensity: current?.basketball_intensity ?? null,
+    basketball_impact: current?.basketball_impact ?? null,
+    basketball_minutes: current?.basketball_minutes ?? null,
+    basketball_active_calories: current?.basketball_active_calories ?? null,
+    basketball_avg_hr: current?.basketball_avg_hr ?? null,
+    friday_sleep_quality: current?.friday_sleep_quality ?? null,
+    friday_movement_feel: current?.friday_movement_feel ?? null,
+    swap_day_one: dayOne,
+    swap_day_two: dayTwo,
+  }
+
+  const { error } = await supabase
+    .from('weekly_settings')
+    .upsert([payload], { onConflict: 'user_id,week_start' })
+
+  if (error) {
+    console.error('weekly day swap save error', error)
+    throw error
+  }
+}
+
+export async function clearWeeklyDaySwap(weekStart: string) {
+  return saveWeeklyDaySwap(weekStart, null, null)
 }
 
 export async function loadWorkoutHistoryBundleFromSupabase(): Promise<{
