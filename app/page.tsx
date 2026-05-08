@@ -11,6 +11,7 @@ import {
   loadTodayWorkoutRecordFromSupabase,
   loadWorkoutHistoryBundleFromSupabase,
   getEffectiveWorkoutDayNumber,
+  hasActiveWeeklyReorder,
   getLocalDateString,
   getTomorrowWorkoutLabel,
   getWeeklySettings,
@@ -451,10 +452,7 @@ export default function HomePage() {
   const todayAlternative = todayWorkoutRecord?.status === 'alternative_completed'
   const todayMissed = todayWorkoutRecord?.status === 'missed'
   const todayPartial = todayWorkoutRecord?.status === 'completed_partial'
-  const hasActiveSwap =
-    weeklySettings?.swap_day_one != null &&
-    weeklySettings?.swap_day_two != null &&
-    weeklySettings.swap_day_one !== weeklySettings.swap_day_two
+  const hasActiveSwap = hasActiveWeeklyReorder(weeklySettings)
 
   return (
     <div className="space-y-6 pb-6">

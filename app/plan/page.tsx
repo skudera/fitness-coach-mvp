@@ -13,11 +13,12 @@ import {
 } from '@/lib/recovery-governor'
 import {
   getEffectiveWorkoutDayNumber,
+  hasActiveWeeklyReorder,
   getWeekStartDate,
   getWeeklySettings,
   loadEquipmentPreferences,
-  saveWeeklyDaySwap,
-  clearWeeklyDaySwap,
+  saveWeeklyDayOrder,
+  clearWeeklyDayOrder,
   type WeeklySettingsRow,
 } from '@/lib/storage-supabase'
 
@@ -114,10 +115,9 @@ export default function PlanPage() {
   })
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [cardioPreference, setCardioPreference] = useState<string | null>(null)
-  const [showSwapPanel, setShowSwapPanel] = useState(false)
-  const [swapDayOne, setSwapDayOne] = useState<string>('')
-  const [swapDayTwo, setSwapDayTwo] = useState<string>('')
-  const [swapSaving, setSwapSaving] = useState(false)
+  const [showReorderPanel, setShowReorderPanel] = useState(false)
+  const [dayOrderDraft, setDayOrderDraft] = useState<Record<string, string>>({})
+  const [reorderSaving, setReorderSaving] = useState(false)
 
   useEffect(() => {
     async function loadWeekly() {
@@ -141,13 +141,13 @@ export default function PlanPage() {
   }, [])
 
   useEffect(() => {
-    setSwapDayOne(
-      weeklySettings?.swap_day_one != null ? String(weeklySettings.swap_day_one) : ''
-    )
-    setSwapDayTwo(
-      weeklySettings?.swap_day_two != null ? String(weeklySettings.swap_day_two) : ''
-    )
-  }, [weeklySettings?.swap_day_one, weeklySettings?.swap_day_two])
+    const draft: Record<string, string> = {}
+    for (const { day } of weekdayOptions) {
+      const effective = getEffectiveWorkoutDayNumber(day, weeklySettings)
+      draft[String(day)] = String(effective)
+    }
+    setDayOrderDraft(draft)
+  }, [weeklySettings])
 
   const effectiveWeekPlan = useMemo(() => {
     return weekPlan.map(({ day }) => {
@@ -203,43 +203,46 @@ export default function PlanPage() {
     [effectiveWorkout.dayName]
   )
 
-  const hasActiveSwap =
-    weeklySettings?.swap_day_one != null &&
-    weeklySettings?.swap_day_two != null &&
-    weeklySettings.swap_day_one !== weeklySettings.swap_day_two
+  const hasActiveReorder = hasActiveWeeklyReorder(weeklySettings)
 
-  async function handleSaveSwap() {
-    if (!swapDayOne || !swapDayTwo) return
-    if (swapDayOne === swapDayTwo) return
-
+  async function handleSaveOrder() {
     try {
-      setSwapSaving(true)
+      setReorderSaving(true)
       const weekStart = getWeekStartDate()
-      await saveWeeklyDaySwap(weekStart, Number(swapDayOne), Number(swapDayTwo))
+      const orderMap: Record<string, number> = {}
+      let hasChanges = false
+      for (const { day } of weekdayOptions) {
+        const assigned = Number(dayOrderDraft[String(day)] ?? day)
+        orderMap[String(day)] = assigned
+        if (assigned !== day) hasChanges = true
+      }
+      if (hasChanges) {
+        await saveWeeklyDayOrder(weekStart, orderMap)
+      } else {
+        await clearWeeklyDayOrder(weekStart)
+      }
       const refreshed = await getWeeklySettings(weekStart)
       setWeeklySettings(refreshed)
-      setShowSwapPanel(false)
+      setShowReorderPanel(false)
     } catch (error) {
-      console.error('Save day swap error', error)
+      console.error('Save day order error', error)
     } finally {
-      setSwapSaving(false)
+      setReorderSaving(false)
     }
   }
 
-  async function handleClearSwap() {
+  async function handleResetOrder() {
     try {
-      setSwapSaving(true)
+      setReorderSaving(true)
       const weekStart = getWeekStartDate()
-      await clearWeeklyDaySwap(weekStart)
+      await clearWeeklyDayOrder(weekStart)
       const refreshed = await getWeeklySettings(weekStart)
       setWeeklySettings(refreshed)
-      setSwapDayOne('')
-      setSwapDayTwo('')
-      setShowSwapPanel(false)
+      setShowReorderPanel(false)
     } catch (error) {
-      console.error('Clear day swap error', error)
+      console.error('Reset day order error', error)
     } finally {
-      setSwapSaving(false)
+      setReorderSaving(false)
     }
   }
 
@@ -258,81 +261,80 @@ export default function PlanPage() {
           <div className="label">This Week</div>
           <button
             type="button"
-            onClick={() => setShowSwapPanel((prev) => !prev)}
+            onClick={() => setShowReorderPanel((prev) => !prev)}
             className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-slate-700"
           >
-            {showSwapPanel ? 'Close Swap' : 'Swap Days'}
+            {showReorderPanel ? 'Close' : 'Reorder Days'}
           </button>
         </div>
 
-        {hasActiveSwap ? (
+        {hasActiveReorder && !showReorderPanel ? (
           <div className="rounded-2xl border border-emerald-500/30 bg-slate-900/40 p-4">
-            <div className="label">Active Weekly Swap</div>
-            <p className="mt-2 text-sm text-slate-100">
-              {weekdayOptions.find((option) => option.day === weeklySettings?.swap_day_one)?.label} swapped with{' '}
-              {weekdayOptions.find((option) => option.day === weeklySettings?.swap_day_two)?.label}.
-            </p>
+            <div className="label">Active Weekly Reorder</div>
+            <div className="mt-2 space-y-1">
+              {weekdayOptions
+                .filter(({ day }) => getEffectiveWorkoutDayNumber(day, weeklySettings) !== day)
+                .map(({ day, label }) => {
+                  const effectiveDay = getEffectiveWorkoutDayNumber(day, weeklySettings)
+                  const workout = weekPlan.find((item) => item.day === effectiveDay)?.workout
+                  return (
+                    <div key={day} className="text-sm text-slate-100">
+                      {label} → {workout?.dayName ?? '?'} workout
+                    </div>
+                  )
+                })}
+            </div>
           </div>
         ) : null}
 
-        {showSwapPanel ? (
+        {showReorderPanel ? (
           <div className="space-y-4 rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Swap Two Workout Days</div>
+            <div className="label">Reorder Workout Days</div>
             <p className="text-sm text-slate-300">
-              This changes the current week only. Your default template stays the same.
+              Assign any workout to any day. This changes the current week only.
             </p>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="label mb-2">Day one</div>
-                <select
-                  value={swapDayOne}
-                  onChange={(e) => setSwapDayOne(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white"
-                >
-                  <option value="">Select day</option>
-                  {weekdayOptions.map((option) => (
-                    <option key={`swap-one-${option.day}`} value={option.day}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <div className="label mb-2">Day two</div>
-                <select
-                  value={swapDayTwo}
-                  onChange={(e) => setSwapDayTwo(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white"
-                >
-                  <option value="">Select day</option>
-                  {weekdayOptions.map((option) => (
-                    <option key={`swap-two-${option.day}`} value={option.day}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="space-y-3">
+              {weekdayOptions.map(({ day, label }) => (
+                <div key={day} className="flex items-center gap-3">
+                  <div className="w-20 shrink-0 text-sm text-slate-300">{label}</div>
+                  <select
+                    value={dayOrderDraft[String(day)] ?? String(day)}
+                    onChange={(e) =>
+                      setDayOrderDraft((prev) => ({ ...prev, [String(day)]: e.target.value }))
+                    }
+                    className="flex-1 rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white"
+                  >
+                    {weekdayOptions.map((opt) => {
+                      const workout = weekPlan.find((item) => item.day === opt.day)?.workout
+                      return (
+                        <option key={opt.day} value={opt.day}>
+                          {workout?.dayName ?? opt.label}: {workout?.focus ?? ''}
+                        </option>
+                      )
+                    })}
+                  </select>
+                </div>
+              ))}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={handleSaveSwap}
-                disabled={swapSaving || !swapDayOne || !swapDayTwo || swapDayOne === swapDayTwo}
+                onClick={handleSaveOrder}
+                disabled={reorderSaving}
                 className="rounded-[1.25rem] bg-emerald-500 px-4 py-4 text-center text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
               >
-                {swapSaving ? 'Saving…' : 'Save Swap'}
+                {reorderSaving ? 'Saving…' : 'Apply Order'}
               </button>
 
               <button
                 type="button"
-                onClick={handleClearSwap}
-                disabled={swapSaving || !hasActiveSwap}
+                onClick={handleResetOrder}
+                disabled={reorderSaving || !hasActiveReorder}
                 className="rounded-[1.25rem] bg-slate-800 px-4 py-4 text-center text-sm font-semibold text-slate-100 transition hover:bg-slate-700 disabled:opacity-50"
               >
-                Clear Swap
+                Reset to Default
               </button>
             </div>
           </div>
