@@ -2,6 +2,23 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  rectSwappingStrategy,
+  arraySwap,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { getWeekPlan, getTargetForExercise } from '@/lib/workout-data'
 import {
   detectBasketballLoad,
@@ -13,7 +30,6 @@ import {
 } from '@/lib/recovery-governor'
 import {
   getEffectiveWorkoutDayNumber,
-  hasActiveWeeklyReorder,
   getWeekStartDate,
   getWeeklySettings,
   loadEquipmentPreferences,
@@ -99,13 +115,69 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
   return tags
 }
 
+function shortFocus(focus: string) {
+  return focus.split(' / ')[0]
+}
+
 const weekdayOptions = [
-  { day: 1, label: 'Monday' },
-  { day: 2, label: 'Tuesday' },
-  { day: 3, label: 'Wednesday' },
-  { day: 4, label: 'Thursday' },
-  { day: 5, label: 'Friday' },
+  { day: 1, label: 'Mon' },
+  { day: 2, label: 'Tue' },
+  { day: 3, label: 'Wed' },
+  { day: 4, label: 'Thu' },
+  { day: 5, label: 'Fri' },
 ]
+
+function SortableWorkoutCard({
+  id,
+  calendarLabel,
+  isSelected,
+  isReordered,
+  focus,
+  onClick,
+}: {
+  id: number
+  calendarLabel: string
+  isSelected: boolean
+  isReordered: boolean
+  focus: string
+  onClick: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      onClick={onClick}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        touchAction: 'none',
+      }}
+      {...attributes}
+      {...listeners}
+      className={`relative rounded-2xl px-2 py-3 text-center select-none transition ${
+        isDragging ? 'opacity-40 scale-95' : ''
+      } ${
+        isSelected
+          ? 'bg-emerald-500 text-slate-950'
+          : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+      }`}
+    >
+      <div className="text-xs font-semibold">{calendarLabel}</div>
+      <div
+        className={`mt-1 text-[10px] font-medium leading-tight ${
+          isSelected ? 'text-slate-800' : 'text-slate-400'
+        }`}
+      >
+        {shortFocus(focus)}
+      </div>
+      {isReordered ? (
+        <div className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-emerald-400" />
+      ) : null}
+    </button>
+  )
+}
 
 export default function PlanPage() {
   const weekPlan = useMemo(() => getWeekPlan(), [])
@@ -115,9 +187,12 @@ export default function PlanPage() {
   })
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [cardioPreference, setCardioPreference] = useState<string | null>(null)
-  const [showReorderPanel, setShowReorderPanel] = useState(false)
-  const [dayOrderDraft, setDayOrderDraft] = useState<Record<string, string>>({})
-  const [reorderSaving, setReorderSaving] = useState(false)
+  const [slotOrder, setSlotOrder] = useState<number[]>([1, 2, 3, 4, 5])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
 
   useEffect(() => {
     async function loadWeekly() {
@@ -127,7 +202,6 @@ export default function PlanPage() {
           getWeeklySettings(weekStart),
           loadEquipmentPreferences(),
         ])
-
         setWeeklySettings(weekly ?? null)
         setCardioPreference(prefs?.cardio_preference ?? null)
       } catch (error) {
@@ -136,42 +210,34 @@ export default function PlanPage() {
         setCardioPreference(null)
       }
     }
-
     loadWeekly()
   }, [])
 
   useEffect(() => {
-    const draft: Record<string, string> = {}
-    for (const { day } of weekdayOptions) {
-      const effective = getEffectiveWorkoutDayNumber(day, weeklySettings)
-      draft[String(day)] = String(effective)
-    }
-    setDayOrderDraft(draft)
+    const order = weekdayOptions.map(({ day }) =>
+      getEffectiveWorkoutDayNumber(day, weeklySettings)
+    )
+    setSlotOrder(order)
   }, [weeklySettings])
 
-  const effectiveWeekPlan = useMemo(() => {
-    return weekPlan.map(({ day }) => {
-      const effectiveDay = getEffectiveWorkoutDayNumber(day, weeklySettings)
-      const effectiveWorkout =
-        weekPlan.find((item) => item.day === effectiveDay)?.workout ?? weekPlan[0].workout
+  const isReorderActive = useMemo(
+    () => slotOrder.some((workoutDay, i) => workoutDay !== weekdayOptions[i].day),
+    [slotOrder]
+  )
 
-      return {
-        day,
-        workout: effectiveWorkout,
-        swappedFrom: effectiveDay !== day ? effectiveDay : null,
-      }
-    })
-  }, [weekPlan, weeklySettings])
+  const selectedWorkout = useMemo(() => {
+    const slotIndex = weekdayOptions.findIndex((opt) => opt.day === selectedDay)
+    const workoutDay = slotIndex >= 0 ? slotOrder[slotIndex] : selectedDay
+    return weekPlan.find((item) => item.day === workoutDay)?.workout ?? weekPlan[0].workout
+  }, [weekPlan, slotOrder, selectedDay])
 
-  const selectedWorkout =
-    effectiveWeekPlan.find((item) => item.day === selectedDay)?.workout ?? effectiveWeekPlan[0].workout
-
-  const selectedBaseWorkout =
-    weekPlan.find((item) => item.day === selectedDay)?.workout ?? weekPlan[0].workout
+  const selectedBaseWorkout = useMemo(
+    () => weekPlan.find((item) => item.day === selectedDay)?.workout ?? weekPlan[0].workout,
+    [weekPlan, selectedDay]
+  )
 
   const fridayOutput = useMemo<FridayOutputType | null>(() => {
     if (selectedWorkout.dayName !== 'Friday') return null
-
     return getFridayOutputType({
       basketballStatus: weeklySettings?.basketball_status ?? null,
       basketballTiming: weeklySettings?.basketball_timing ?? null,
@@ -203,46 +269,44 @@ export default function PlanPage() {
     [effectiveWorkout.dayName]
   )
 
-  const hasActiveReorder = hasActiveWeeklyReorder(weeklySettings)
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
 
-  async function handleSaveOrder() {
+    const oldIndex = slotOrder.indexOf(Number(active.id))
+    const newIndex = slotOrder.indexOf(Number(over.id))
+    const newOrder = arraySwap(slotOrder, oldIndex, newIndex)
+    setSlotOrder(newOrder)
+
+    const weekStart = getWeekStartDate()
+    const isDefault = newOrder.every((workoutDay, i) => workoutDay === weekdayOptions[i].day)
+
     try {
-      setReorderSaving(true)
-      const weekStart = getWeekStartDate()
-      const orderMap: Record<string, number> = {}
-      let hasChanges = false
-      for (const { day } of weekdayOptions) {
-        const assigned = Number(dayOrderDraft[String(day)] ?? day)
-        orderMap[String(day)] = assigned
-        if (assigned !== day) hasChanges = true
-      }
-      if (hasChanges) {
-        await saveWeeklyDayOrder(weekStart, orderMap)
-      } else {
+      if (isDefault) {
         await clearWeeklyDayOrder(weekStart)
+      } else {
+        const orderMap: Record<string, number> = {}
+        weekdayOptions.forEach(({ day }, i) => {
+          orderMap[String(day)] = newOrder[i]
+        })
+        await saveWeeklyDayOrder(weekStart, orderMap)
       }
       const refreshed = await getWeeklySettings(weekStart)
       setWeeklySettings(refreshed)
-      setShowReorderPanel(false)
     } catch (error) {
       console.error('Save day order error', error)
-    } finally {
-      setReorderSaving(false)
+      setSlotOrder(slotOrder)
     }
   }
 
   async function handleResetOrder() {
+    const weekStart = getWeekStartDate()
     try {
-      setReorderSaving(true)
-      const weekStart = getWeekStartDate()
       await clearWeeklyDayOrder(weekStart)
       const refreshed = await getWeeklySettings(weekStart)
       setWeeklySettings(refreshed)
-      setShowReorderPanel(false)
     } catch (error) {
       console.error('Reset day order error', error)
-    } finally {
-      setReorderSaving(false)
     }
   }
 
@@ -259,111 +323,44 @@ export default function PlanPage() {
       <section className="card space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="label">This Week</div>
-          <button
-            type="button"
-            onClick={() => setShowReorderPanel((prev) => !prev)}
-            className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-slate-700"
-          >
-            {showReorderPanel ? 'Close' : 'Reorder Days'}
-          </button>
+          {isReorderActive ? (
+            <button
+              type="button"
+              onClick={handleResetOrder}
+              className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-slate-700"
+            >
+              Reset Order
+            </button>
+          ) : null}
         </div>
 
-        {hasActiveReorder && !showReorderPanel ? (
-          <div className="rounded-2xl border border-emerald-500/30 bg-slate-900/40 p-4">
-            <div className="label">Active Weekly Reorder</div>
-            <div className="mt-2 space-y-1">
-              {weekdayOptions
-                .filter(({ day }) => getEffectiveWorkoutDayNumber(day, weeklySettings) !== day)
-                .map(({ day, label }) => {
-                  const effectiveDay = getEffectiveWorkoutDayNumber(day, weeklySettings)
-                  const workout = weekPlan.find((item) => item.day === effectiveDay)?.workout
-                  return (
-                    <div key={day} className="text-sm text-slate-100">
-                      {label} → {workout?.dayName ?? '?'} workout
-                    </div>
-                  )
-                })}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={slotOrder} strategy={rectSwappingStrategy}>
+            <div className="grid grid-cols-5 gap-2">
+              {weekdayOptions.map(({ day, label }, index) => {
+                const workoutDay = slotOrder[index]
+                const workout = weekPlan.find((item) => item.day === workoutDay)?.workout
+                return (
+                  <SortableWorkoutCard
+                    key={workoutDay}
+                    id={workoutDay}
+                    calendarLabel={label}
+                    isSelected={selectedDay === day}
+                    isReordered={workoutDay !== day}
+                    focus={workout?.focus ?? ''}
+                    onClick={() => setSelectedDay(day)}
+                  />
+                )
+              })}
             </div>
-          </div>
-        ) : null}
+          </SortableContext>
+        </DndContext>
 
-        {showReorderPanel ? (
-          <div className="space-y-4 rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Reorder Workout Days</div>
-            <p className="text-sm text-slate-300">
-              Assign any workout to any day. This changes the current week only.
-            </p>
-
-            <div className="space-y-3">
-              {weekdayOptions.map(({ day, label }) => (
-                <div key={day} className="flex items-center gap-3">
-                  <div className="w-20 shrink-0 text-sm text-slate-300">{label}</div>
-                  <select
-                    value={dayOrderDraft[String(day)] ?? String(day)}
-                    onChange={(e) =>
-                      setDayOrderDraft((prev) => ({ ...prev, [String(day)]: e.target.value }))
-                    }
-                    className="flex-1 rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white"
-                  >
-                    {weekdayOptions.map((opt) => {
-                      const workout = weekPlan.find((item) => item.day === opt.day)?.workout
-                      return (
-                        <option key={opt.day} value={opt.day}>
-                          {workout?.dayName ?? opt.label}: {workout?.focus ?? ''}
-                        </option>
-                      )
-                    })}
-                  </select>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={handleSaveOrder}
-                disabled={reorderSaving}
-                className="rounded-[1.25rem] bg-emerald-500 px-4 py-4 text-center text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
-              >
-                {reorderSaving ? 'Saving…' : 'Apply Order'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResetOrder}
-                disabled={reorderSaving || !hasActiveReorder}
-                className="rounded-[1.25rem] bg-slate-800 px-4 py-4 text-center text-sm font-semibold text-slate-100 transition hover:bg-slate-700 disabled:opacity-50"
-              >
-                Reset to Default
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-5 gap-2">
-          {effectiveWeekPlan.map(({ day, workout, swappedFrom }) => {
-            const active = selectedDay === day
-            return (
-              <button
-                key={day}
-                type="button"
-                onClick={() => setSelectedDay(day)}
-                className={`rounded-2xl px-3 py-3 text-sm font-semibold transition ${
-                  active
-                    ? 'bg-emerald-500 text-slate-950'
-                    : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-                }`}
-              >
-                <div>{['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'][day]}</div>
-                {swappedFrom != null ? (
-                  <div className="mt-1 text-[10px] font-medium opacity-80">
-                    from {workout.dayName.slice(0, 3)}
-                  </div>
-                ) : null}
-              </button>
-            )
-          })}
-        </div>
+        <p className="text-center text-[10px] text-slate-600">Drag to reorder · tap to select</p>
       </section>
 
       <section className="card space-y-4">
@@ -375,7 +372,9 @@ export default function PlanPage() {
           <div className="rounded-2xl border border-amber-500/30 bg-slate-900/40 p-4">
             <div className="label">Day Swap Applied</div>
             <p className="mt-2 text-slate-100">
-              This calendar day normally shows <span className="font-semibold">{selectedBaseWorkout.dayName}</span>, but this week it is using <span className="font-semibold">{effectiveWorkout.dayName}</span>.
+              This calendar day normally shows{' '}
+              <span className="font-semibold">{selectedBaseWorkout.dayName}</span>, but this week
+              it is using <span className="font-semibold">{effectiveWorkout.dayName}</span>.
             </p>
           </div>
         ) : null}
