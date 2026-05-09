@@ -240,10 +240,24 @@ export default function InBodyPage() {
     try {
       let imagePath: string | null = null
       if (imageFile) {
-        imagePath = await uploadInBodyImage(imageFile)
+        try {
+          imagePath = await uploadInBodyImage(imageFile)
+        } catch (uploadErr: unknown) {
+          const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
+          setSaveError(`Image upload failed: ${msg}`)
+          setMode('review')
+          return
+        }
       }
 
-      await saveInBodyAssessment(formToPayload(form, imagePath))
+      try {
+        await saveInBodyAssessment(formToPayload(form, imagePath))
+      } catch (dbErr: unknown) {
+        const msg = dbErr instanceof Error ? dbErr.message : String(dbErr)
+        setSaveError(`Database save failed: ${msg}`)
+        setMode('review')
+        return
+      }
 
       const refreshed = await loadInBodyAssessmentsFromSupabase()
       setHistory(refreshed)
@@ -251,9 +265,9 @@ export default function InBodyPage() {
       setImageFile(null)
       setImagePreview(null)
       setMode('idle')
-    } catch (err) {
-      console.error(err)
-      setSaveError('Could not save assessment. Please try again.')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setSaveError(`Save failed: ${msg}`)
       setMode('review')
     }
   }
