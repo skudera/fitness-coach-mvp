@@ -19,7 +19,7 @@ import {
   arraySwap,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { getWeekPlan, getTargetForExercise } from '@/lib/workout-data'
+import { getWeekPlan, getTargetForExercise, applyCardioPreference } from '@/lib/workout-data'
 import {
   detectBasketballLoad,
   getFridayOutputLabel,
@@ -472,7 +472,9 @@ export default function PlanPage() {
                   {/* Cardio */}
                   <div>
                     <div className="label mb-1.5">Cardio</div>
-                    <p className="text-sm text-slate-300">{displayWorkout.cardio}</p>
+                    <p className="text-sm text-slate-300">
+                      {applyCardioPreference(displayWorkout.cardio, cardioPreference)}
+                    </p>
                     {(() => {
                       const add = coachingOverrides?.cardio_add_minutes?.[displayWorkout.dayName]
                       if (!add) return null

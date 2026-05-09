@@ -7,6 +7,7 @@ import {
   getTargetForExercise,
   getExerciseSubstitutions,
   getExerciseHistoryAliases,
+  applyCardioPreference,
   type WorkoutDefinition,
 } from '@/lib/workout-data'
 import {
@@ -574,11 +575,12 @@ export default function WorkoutLogPage() {
   }, [startedAt, strengthEndedAt, nowMs])
 
   const resolvedCardioText = useMemo(() => {
-    if (workout.dayName === 'Thursday') {
-      return getResolvedThursdayCardio(basketballStatus)
-    }
-    return workout.cardio
-  }, [workout.dayName, workout.cardio, basketballStatus])
+    const base =
+      workout.dayName === 'Thursday'
+        ? getResolvedThursdayCardio(basketballStatus)
+        : workout.cardio
+    return applyCardioPreference(base, cardioPreference)
+  }, [workout.dayName, workout.cardio, basketballStatus, cardioPreference])
 
   const plannedCardioMinutes = useMemo(() => {
     return parseFirstNumber(resolvedCardioText)

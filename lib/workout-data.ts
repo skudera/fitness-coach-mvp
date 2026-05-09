@@ -350,6 +350,23 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
   return ['Machine Variation', 'Cable Variation', 'Bodyweight Alternative']
 }
 
+export function applyCardioPreference(
+  cardioText: string,
+  preference: string | null | undefined
+): string {
+  if (!preference) return cardioText
+
+  const lower = cardioText.toLowerCase()
+  if (lower.includes('optional') || lower.includes('depending') || lower.includes('skip')) {
+    return cardioText
+  }
+
+  const match = cardioText.match(/(\d+)\s*min/)
+  if (!match) return cardioText
+
+  return `${preference} – ${match[1]} min`
+}
+
 export function getExerciseHistoryAliases(exerciseName: string): string[] {
   const map: Record<string, string[]> = {
     'Smith Machine Incline Chest Press': [

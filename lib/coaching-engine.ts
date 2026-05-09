@@ -167,9 +167,7 @@ function analyzeProgressionStalls(
   byExercise.forEach((sessions, name) => {
     const recent = [...sessions.values()].slice(0, 3)
     if (recent.length < 3) return
-    const allBroken = recent.every(
-      (d) => d === 'Slight Breakdown' || d === 'Breakdown'
-    )
+    const allBroken = recent.every((d) => d === 'Breakdown')
     if (allBroken) stalled.push(name)
   })
 
