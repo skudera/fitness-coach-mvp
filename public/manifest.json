@@ -1,0 +1,17 @@
+{
+  "name": "Fitness Coach",
+  "short_name": "Fitness Coach",
+  "description": "Personal adaptive fitness coach",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/apple-icon",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
