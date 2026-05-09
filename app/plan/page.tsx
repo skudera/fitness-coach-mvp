@@ -32,10 +32,13 @@ import {
   getWeekStartDate,
   getWeeklySettings,
   loadEquipmentPreferences,
+  loadInBodyAssessmentsFromSupabase,
   saveWeeklyDayOrder,
   clearWeeklyDayOrder,
   type WeeklySettingsRow,
+  type InBodyRow,
 } from '@/lib/storage-supabase'
+import { getInBodyDayNotes } from '@/lib/coaching-engine'
 
 function getDayEmphasis(dayName: string) {
   switch (dayName) {
@@ -164,6 +167,7 @@ export default function PlanPage() {
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [cardioPreference, setCardioPreference] = useState<string | null>(null)
   const [slotOrder, setSlotOrder] = useState<number[]>([1, 2, 3, 4, 5])
+  const [latestInBody, setLatestInBody] = useState<InBodyRow | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -174,12 +178,14 @@ export default function PlanPage() {
     async function loadWeekly() {
       try {
         const weekStart = getWeekStartDate()
-        const [weekly, prefs] = await Promise.all([
+        const [weekly, prefs, inbodyRows] = await Promise.all([
           getWeeklySettings(weekStart),
           loadEquipmentPreferences(),
+          loadInBodyAssessmentsFromSupabase(),
         ])
         setWeeklySettings(weekly ?? null)
         setCardioPreference(prefs?.cardio_preference ?? null)
+        setLatestInBody(inbodyRows[0] ?? null)
       } catch (error) {
         console.error('Plan page weekly settings load error', error)
         setWeeklySettings(null)
@@ -381,6 +387,24 @@ export default function PlanPage() {
                       </p>
                     </div>
                   ) : null}
+
+                  {/* InBody-informed day notes */}
+                  {(() => {
+                    const inbodyNotes = getInBodyDayNotes(displayWorkout.dayName, latestInBody)
+                    if (!inbodyNotes.length) return null
+                    return (
+                      <div className="rounded-xl border border-blue-500/20 bg-blue-950/20 px-3 py-2.5 space-y-1">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-400">
+                          InBody insight
+                        </div>
+                        {inbodyNotes.map((note, i) => (
+                          <p key={i} className="text-xs text-slate-300 leading-relaxed">
+                            {note}
+                          </p>
+                        ))}
+                      </div>
+                    )
+                  })()}
 
                   {/* Emphasis */}
                   {emphasis ? (

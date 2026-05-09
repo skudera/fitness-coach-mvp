@@ -3,7 +3,17 @@ import type { BodyMetricRow, ExerciseLogRow, InBodyRow, WorkoutRow } from './sto
 export type FindingSeverity = 'info' | 'warning' | 'action'
 
 export type CoachingFinding = {
-  type: 'stall' | 'discomfort' | 'partial' | 'progression_stall' | 'muscle_retention'
+  type:
+    | 'stall'
+    | 'discomfort'
+    | 'partial'
+    | 'progression_stall'
+    | 'muscle_retention'
+    | 'segmental_imbalance'
+    | 'visceral_fat'
+    | 'trunk_fat'
+    | 'leg_lean_deficit'
+    | 'ecw_tbw'
   severity: FindingSeverity
   title: string
   body: string
@@ -199,6 +209,188 @@ function analyzeMuscleRetention(assessments: InBodyRow[]): CoachingFinding | nul
   return null
 }
 
+function analyzeSegmentalImbalance(assessments: InBodyRow[]): CoachingFinding | null {
+  const latest = assessments[0]
+  if (!latest) return null
+
+  const notes: string[] = []
+
+  if (latest.lean_right_arm != null && latest.lean_left_arm != null) {
+    const gap = Math.abs(latest.lean_right_arm - latest.lean_left_arm)
+    if (gap > 0.5) {
+      const weaker = latest.lean_right_arm < latest.lean_left_arm ? 'right' : 'left'
+      notes.push(
+        `${weaker.charAt(0).toUpperCase() + weaker.slice(1)} arm is ${gap.toFixed(2)} lb behind — add an extra set of unilateral work on the ${weaker} side`
+      )
+    }
+  }
+
+  if (latest.lean_right_leg != null && latest.lean_left_leg != null) {
+    const gap = Math.abs(latest.lean_right_leg - latest.lean_left_leg)
+    if (gap > 1.0) {
+      const weaker = latest.lean_right_leg < latest.lean_left_leg ? 'right' : 'left'
+      notes.push(
+        `${weaker.charAt(0).toUpperCase() + weaker.slice(1)} leg is ${gap.toFixed(2)} lb behind — prioritize single-leg work on the ${weaker} side`
+      )
+    }
+  }
+
+  if (!notes.length) return null
+
+  return {
+    type: 'segmental_imbalance',
+    severity: 'info',
+    title: 'Segmental lean imbalance',
+    body: notes.join('. ') + '.',
+  }
+}
+
+function analyzeVisceralFat(assessments: InBodyRow[]): CoachingFinding | null {
+  const latest = assessments[0]
+  if (!latest || latest.visceral_fat_level == null) return null
+
+  const vfl = latest.visceral_fat_level
+
+  if (vfl >= 10) {
+    return {
+      type: 'visceral_fat',
+      severity: 'action',
+      title: 'Visceral fat above target',
+      body: `Visceral fat level is ${vfl} — target is under 10. Prioritize cardio completion every session and keep high-tension core work in the plan. Review weekly nutrition if not already tracking.`,
+    }
+  }
+
+  if (vfl >= 8) {
+    return {
+      type: 'visceral_fat',
+      severity: 'warning',
+      title: 'Visceral fat approaching target zone',
+      body: `Visceral fat level is ${vfl} — approaching the upper limit of 10. Keep cardio consistent and protect core work. Don't let these get skipped as accessory filler.`,
+    }
+  }
+
+  return null
+}
+
+function analyzeTrunkFat(assessments: InBodyRow[]): CoachingFinding | null {
+  const latest = assessments[0]
+  if (!latest || latest.fat_trunk == null || !latest.body_fat_mass) return null
+
+  const trunkRatio = latest.fat_trunk / latest.body_fat_mass
+
+  if (trunkRatio > 0.60) {
+    return {
+      type: 'trunk_fat',
+      severity: 'warning',
+      title: 'Trunk-dominant fat distribution',
+      body: `${(trunkRatio * 100).toFixed(0)}% of total body fat is concentrated in the trunk (${latest.fat_trunk} lb). High-tension core work is a structural priority — cable crunches, dead-bugs, and the ab machine should not be treated as optional filler.`,
+    }
+  }
+
+  return null
+}
+
+function analyzeLegLeanDeficit(assessments: InBodyRow[]): CoachingFinding | null {
+  const latest = assessments[0]
+  if (!latest) return null
+
+  const pcts = [latest.lean_right_leg_pct, latest.lean_left_leg_pct].filter(
+    (p): p is number => p != null
+  )
+  if (!pcts.length) return null
+
+  const avg = pcts.reduce((a, b) => a + b, 0) / pcts.length
+
+  if (avg < 95) {
+    return {
+      type: 'leg_lean_deficit',
+      severity: 'info',
+      title: 'Leg lean mass below ideal',
+      body: `Average leg lean is ${avg.toFixed(1)}% of ideal (R: ${latest.lean_right_leg_pct?.toFixed(1) ?? '—'}%, L: ${latest.lean_left_leg_pct?.toFixed(1) ?? '—'}%). Leg day compound lifts — leg press, hack squat, and hamstring curl — are the primary levers for closing this gap.`,
+    }
+  }
+
+  return null
+}
+
+function analyzeEcwTbw(assessments: InBodyRow[]): CoachingFinding | null {
+  const latest = assessments[0]
+  if (!latest || latest.ecw_tbw == null) return null
+
+  const ratio = latest.ecw_tbw
+
+  if (ratio > 0.42) {
+    return {
+      type: 'ecw_tbw',
+      severity: 'warning',
+      title: 'Body water balance elevated',
+      body: `ECW/TBW ratio is ${ratio} — above the normal range of 0.36–0.39. An elevated ratio can signal inflammation or under-recovery. Prioritize sleep quality, reduce excess sodium, and evaluate whether training volume is sustainable.`,
+    }
+  }
+
+  if (ratio > 0.40) {
+    return {
+      type: 'ecw_tbw',
+      severity: 'info',
+      title: 'Body water balance slightly elevated',
+      body: `ECW/TBW ratio is ${ratio} — slightly above the 0.36–0.39 normal range. Monitor recovery quality. If it persists at the next assessment, consider recovery load and hydration habits.`,
+    }
+  }
+
+  return null
+}
+
+export function getInBodyDayNotes(
+  dayName: string,
+  assessment: InBodyRow | null
+): string[] {
+  if (!assessment) return []
+
+  const notes: string[] = []
+
+  const isUpperDay =
+    dayName === 'Monday' || dayName === 'Tuesday' || dayName === 'Thursday'
+  const isLegDay = dayName === 'Wednesday' || dayName === 'Friday'
+
+  // Arm imbalance note — upper days
+  if (isUpperDay && assessment.lean_right_arm != null && assessment.lean_left_arm != null) {
+    const gap = Math.abs(assessment.lean_right_arm - assessment.lean_left_arm)
+    if (gap > 0.5) {
+      const weaker = assessment.lean_right_arm < assessment.lean_left_arm ? 'right' : 'left'
+      notes.push(
+        `${weaker.charAt(0).toUpperCase() + weaker.slice(1)} arm lean is ${gap.toFixed(2)} lb behind — consider an extra set on the ${weaker} side for isolation work today.`
+      )
+    }
+  }
+
+  // Leg lean deficit note — leg days
+  if (isLegDay) {
+    const pcts = [assessment.lean_right_leg_pct, assessment.lean_left_leg_pct].filter(
+      (p): p is number => p != null
+    )
+    if (pcts.length) {
+      const avg = pcts.reduce((a, b) => a + b, 0) / pcts.length
+      if (avg < 95) {
+        notes.push(
+          `Leg lean is ${avg.toFixed(1)}% of ideal — prioritize progressive overload on compound leg movements. Don't rush the weights.`
+        )
+      }
+    }
+  }
+
+  // Trunk fat note — any day with core work (Mon/Tue/Wed/Thu)
+  if (dayName !== 'Friday' && assessment.fat_trunk != null && assessment.body_fat_mass) {
+    const ratio = assessment.fat_trunk / assessment.body_fat_mass
+    if (ratio > 0.60) {
+      notes.push(
+        `Trunk fat is elevated (${assessment.fat_trunk} lb). Core work today is structural — not filler.`
+      )
+    }
+  }
+
+  return notes
+}
+
 export function generateCoachingReport(params: {
   metrics: BodyMetricRow[]
   workouts: WorkoutRow[]
@@ -215,6 +407,11 @@ export function generateCoachingReport(params: {
     analyzeSessionCompletion(workouts),
     analyzeWeightTrend(metrics),
     analyzeMuscleRetention(inbodyAssessments),
+    analyzeVisceralFat(inbodyAssessments),
+    analyzeTrunkFat(inbodyAssessments),
+    analyzeSegmentalImbalance(inbodyAssessments),
+    analyzeLegLeanDeficit(inbodyAssessments),
+    analyzeEcwTbw(inbodyAssessments),
   ].filter((f): f is CoachingFinding => f !== null)
 
   // Sort: action → warning → info
