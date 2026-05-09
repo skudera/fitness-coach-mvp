@@ -26,7 +26,6 @@ import {
   getFridayOutputType,
   getFridayOutputWhy,
   getFridayWorkoutFromOutput,
-  type FridayOutputType,
 } from '@/lib/recovery-governor'
 import {
   getEffectiveWorkoutDayNumber,
@@ -41,30 +40,15 @@ import {
 function getDayEmphasis(dayName: string) {
   switch (dayName) {
     case 'Monday':
-      return {
-        title: 'Monday emphasis',
-        body: 'Chest and shoulder work should stay controlled. Prioritize clean reps and a slow lowering phase on primary machine presses.',
-      }
+      return 'Chest and shoulder work should stay controlled. Prioritize clean reps and a slow lowering phase on primary machine presses.'
     case 'Tuesday':
-      return {
-        title: 'Tuesday emphasis',
-        body: 'Back work stays controlled and core work should be treated as high-tension work, not just filler at the end.',
-      }
+      return 'Back work stays controlled and core work should be treated as high-tension work, not just filler at the end.'
     case 'Wednesday':
-      return {
-        title: 'Wednesday emphasis',
-        body: 'Leg day should bias hamstrings, glutes, and trunk tension so the session supports posture and pelvic position, not just quad fatigue.',
-      }
+      return 'Leg day should bias hamstrings, glutes, and trunk tension so the session supports posture and pelvic position, not just quad fatigue.'
     case 'Thursday':
-      return {
-        title: 'Thursday emphasis',
-        body: 'Mixed upper day should stay clean and athletic. Keep lateral raises strict and avoid swinging or chasing sloppy reps before basketball.',
-      }
+      return 'Mixed upper day should stay clean and athletic. Keep lateral raises strict and avoid swinging or chasing sloppy reps before basketball.'
     case 'Friday':
-      return {
-        title: 'Friday emphasis',
-        body: 'Friday should reflect your basketball recovery inputs first. Let the governor decide whether this is a normal lift, a recovery flow, or a lighter day.',
-      }
+      return 'Friday should reflect your basketball recovery inputs first. Let the governor decide whether this is a normal lift, a recovery flow, or a lighter day.'
     default:
       return null
   }
@@ -149,11 +133,7 @@ function SortableWorkoutCard({
       ref={setNodeRef}
       type="button"
       onClick={onClick}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        touchAction: 'none',
-      }}
+      style={{ transform: CSS.Transform.toString(transform), transition, touchAction: 'none' }}
       {...attributes}
       {...listeners}
       className={`relative rounded-2xl px-2 py-3 text-center select-none transition ${
@@ -165,11 +145,7 @@ function SortableWorkoutCard({
       }`}
     >
       <div className="text-xs font-semibold">{calendarLabel}</div>
-      <div
-        className={`mt-1 text-[10px] font-medium leading-tight ${
-          isSelected ? 'text-slate-800' : 'text-slate-400'
-        }`}
-      >
+      <div className={`mt-1 text-[10px] font-medium leading-tight ${isSelected ? 'text-slate-800' : 'text-slate-400'}`}>
         {shortFocus(focus)}
       </div>
       {isReordered ? (
@@ -225,50 +201,6 @@ export default function PlanPage() {
     [slotOrder]
   )
 
-  const selectedWorkout = useMemo(() => {
-    const slotIndex = weekdayOptions.findIndex((opt) => opt.day === selectedDay)
-    const workoutDay = slotIndex >= 0 ? slotOrder[slotIndex] : selectedDay
-    return weekPlan.find((item) => item.day === workoutDay)?.workout ?? weekPlan[0].workout
-  }, [weekPlan, slotOrder, selectedDay])
-
-  const selectedBaseWorkout = useMemo(
-    () => weekPlan.find((item) => item.day === selectedDay)?.workout ?? weekPlan[0].workout,
-    [weekPlan, selectedDay]
-  )
-
-  const fridayOutput = useMemo<FridayOutputType | null>(() => {
-    if (selectedWorkout.dayName !== 'Friday') return null
-    return getFridayOutputType({
-      basketballStatus: weeklySettings?.basketball_status ?? null,
-      basketballTiming: weeklySettings?.basketball_timing ?? null,
-      basketballImpact: weeklySettings?.basketball_impact ?? null,
-      fridaySleepQuality: weeklySettings?.friday_sleep_quality ?? null,
-      basketballMinutes: weeklySettings?.basketball_minutes ?? null,
-      basketballActiveCalories: weeklySettings?.basketball_active_calories ?? null,
-      basketballAvgHr: weeklySettings?.basketball_avg_hr ?? null,
-    })
-  }, [selectedWorkout.dayName, weeklySettings])
-
-  const effectiveWorkout = useMemo(() => {
-    if (selectedWorkout.dayName === 'Friday' && fridayOutput) {
-      return getFridayWorkoutFromOutput(fridayOutput, cardioPreference)
-    }
-    return selectedWorkout
-  }, [selectedWorkout, fridayOutput, cardioPreference])
-
-  const detectedLoad = useMemo(() => {
-    return detectBasketballLoad({
-      minutes: weeklySettings?.basketball_minutes ?? 0,
-      activeCalories: weeklySettings?.basketball_active_calories ?? 0,
-      avgHr: weeklySettings?.basketball_avg_hr ?? 0,
-    })
-  }, [weeklySettings])
-
-  const dayEmphasis = useMemo(
-    () => getDayEmphasis(effectiveWorkout.dayName),
-    [effectiveWorkout.dayName]
-  )
-
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
@@ -310,16 +242,20 @@ export default function PlanPage() {
     }
   }
 
+  const detectedLoad = useMemo(() => detectBasketballLoad({
+    minutes: weeklySettings?.basketball_minutes ?? 0,
+    activeCalories: weeklySettings?.basketball_active_calories ?? 0,
+    avgHr: weeklySettings?.basketball_avg_hr ?? 0,
+  }), [weeklySettings])
+
   return (
     <div className="space-y-6 pb-6">
       <div>
         <div className="label">Weekly Plan</div>
         <h1 className="text-2xl font-semibold tracking-tight">Preview your workouts</h1>
-        <p className="mt-2 text-slate-300">
-          Select a day to view the full workout plan.
-        </p>
       </div>
 
+      {/* Drag-and-drop reorder grid */}
       <section className="card space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="label">This Week</div>
@@ -334,11 +270,7 @@ export default function PlanPage() {
           ) : null}
         </div>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={slotOrder} strategy={rectSwappingStrategy}>
             <div className="grid grid-cols-5 gap-2">
               {weekdayOptions.map(({ day, label }, index) => {
@@ -360,161 +292,195 @@ export default function PlanPage() {
           </SortableContext>
         </DndContext>
 
-        <p className="text-center text-[10px] text-slate-600">Drag to reorder · tap to select</p>
+        <p className="text-center text-[10px] text-slate-600">Drag to reorder · tap to expand</p>
       </section>
 
-      <section className="card space-y-4">
-        <div className="label">{effectiveWorkout.dayName}</div>
-        <h2 className="text-2xl font-semibold text-white">{effectiveWorkout.focus}</h2>
-        <p className="text-slate-300">{effectiveWorkout.estimatedMinutes}</p>
+      {/* Week overview accordion — all 5 days visible */}
+      <div className="space-y-2">
+        {weekdayOptions.map(({ day, label }, index) => {
+          const workoutDay = slotOrder[index]
+          const baseWorkout = weekPlan.find((item) => item.day === workoutDay)?.workout ?? weekPlan[0].workout
+          const isReordered = workoutDay !== day
+          const isExpanded = selectedDay === day
+          const emphasis = getDayEmphasis(baseWorkout.dayName)
 
-        {selectedBaseWorkout.dayName !== effectiveWorkout.dayName ? (
-          <div className="rounded-2xl border border-amber-500/30 bg-slate-900/40 p-4">
-            <div className="label">Day Swap Applied</div>
-            <p className="mt-2 text-slate-100">
-              This calendar day normally shows{' '}
-              <span className="font-semibold">{selectedBaseWorkout.dayName}</span>, but this week
-              it is using <span className="font-semibold">{effectiveWorkout.dayName}</span>.
-            </p>
-          </div>
-        ) : null}
+          const fridayOutput =
+            baseWorkout.dayName === 'Friday'
+              ? getFridayOutputType({
+                  basketballStatus: weeklySettings?.basketball_status ?? null,
+                  basketballTiming: weeklySettings?.basketball_timing ?? null,
+                  basketballImpact: weeklySettings?.basketball_impact ?? null,
+                  fridaySleepQuality: weeklySettings?.friday_sleep_quality ?? null,
+                  basketballMinutes: weeklySettings?.basketball_minutes ?? null,
+                  basketballActiveCalories: weeklySettings?.basketball_active_calories ?? null,
+                  basketballAvgHr: weeklySettings?.basketball_avg_hr ?? null,
+                })
+              : null
 
-        {dayEmphasis ? (
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">{dayEmphasis.title}</div>
-            <p className="mt-2 text-slate-100">{dayEmphasis.body}</p>
-          </div>
-        ) : null}
+          const displayWorkout =
+            baseWorkout.dayName === 'Friday' && fridayOutput
+              ? getFridayWorkoutFromOutput(fridayOutput, cardioPreference)
+              : baseWorkout
 
-        {selectedWorkout.dayName === 'Friday' ? (
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Friday Governor Inputs</div>
-            <div className="mt-2 text-sm text-slate-300">
-              Basketball happened:{' '}
-              <span className="capitalize text-white">
-                {weeklySettings?.basketball_status ?? 'not answered'}
-              </span>
-            </div>
+          return (
+            <div
+              key={day}
+              className={`rounded-2xl border transition-colors ${
+                isExpanded
+                  ? 'border-emerald-500/30 bg-slate-900'
+                  : 'border-slate-700 bg-slate-900/40'
+              }`}
+            >
+              {/* Row header — always visible, tap to expand */}
+              <button
+                type="button"
+                onClick={() => setSelectedDay(isExpanded ? -1 : day)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span
+                    className={`w-7 shrink-0 text-xs font-bold ${
+                      isExpanded ? 'text-emerald-400' : 'text-slate-500'
+                    }`}
+                  >
+                    {label}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-slate-100">
+                      {displayWorkout.focus}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-slate-500">
+                      {displayWorkout.exercises.length} exercises · {displayWorkout.estimatedMinutes}
+                    </div>
+                  </div>
+                </div>
 
-            {weeklySettings?.basketball_status === 'yes' ? (
-              <>
-                <div className="mt-1 text-sm text-slate-300">
-                  Timing:{' '}
-                  <span className="capitalize text-white">
-                    {weeklySettings?.basketball_timing ?? 'not set'}
+                <div className="flex shrink-0 items-center gap-2">
+                  {isReordered ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  ) : null}
+                  <span
+                    className={`text-lg text-slate-500 transition-transform duration-200 ${
+                      isExpanded ? 'rotate-90' : ''
+                    }`}
+                  >
+                    ›
                   </span>
                 </div>
-                <div className="mt-1 text-sm text-slate-300">
-                  Minutes:{' '}
-                  <span className="text-white">
-                    {weeklySettings?.basketball_minutes ?? '—'}
-                  </span>
-                </div>
-                <div className="mt-1 text-sm text-slate-300">
-                  Active Calories:{' '}
-                  <span className="text-white">
-                    {weeklySettings?.basketball_active_calories ?? '—'}
-                  </span>
-                </div>
-                <div className="mt-1 text-sm text-slate-300">
-                  Avg HR:{' '}
-                  <span className="text-white">
-                    {weeklySettings?.basketball_avg_hr ?? '—'}
-                  </span>
-                </div>
-                <div className="mt-1 text-sm text-slate-300">
-                  Morning feel:{' '}
-                  <span className="capitalize text-white">
-                    {weeklySettings?.friday_sleep_quality?.replaceAll('_', ' ') ?? 'not set'}
-                  </span>
-                </div>
-                <div className="mt-1 text-sm text-slate-300">
-                  Pain concern:{' '}
-                  <span className="capitalize text-white">
-                    {weeklySettings?.basketball_impact === 'pain_issue'
-                      ? 'yes'
-                      : weeklySettings?.basketball_impact === 'no_issue'
-                        ? 'no'
-                        : 'not set'}
-                  </span>
-                </div>
-                <div className="mt-3 text-sm text-slate-300">
-                  Detected Load:{' '}
-                  <span className="capitalize text-white">{detectedLoad}</span>
-                </div>
-              </>
-            ) : null}
-          </div>
-        ) : null}
+              </button>
 
-        {selectedWorkout.dayName === 'Friday' && fridayOutput ? (
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">{getFridayOutputLabel(fridayOutput)}</div>
-            <p className="mt-2 text-slate-100">{getFridayOutputWhy(fridayOutput)}</p>
-          </div>
-        ) : null}
+              {/* Expanded content */}
+              {isExpanded ? (
+                <div className="space-y-4 border-t border-slate-700/60 px-4 pb-4 pt-3">
+                  {/* Reorder note */}
+                  {isReordered ? (
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                      <p className="text-xs text-amber-300">
+                        This slot normally shows{' '}
+                        {weekPlan.find((item) => item.day === day)?.workout.dayName} — swapped this week.
+                      </p>
+                    </div>
+                  ) : null}
 
-        <div>
-          <div className="label mb-2">Warmup</div>
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4 text-slate-100">
-            {effectiveWorkout.warmup}
-          </div>
-        </div>
+                  {/* Emphasis */}
+                  {emphasis ? (
+                    <p className="text-sm leading-relaxed text-slate-400">{emphasis}</p>
+                  ) : null}
 
-        <div>
-          <div className="label mb-2">Exercises</div>
-          <div className="space-y-3">
-            {effectiveWorkout.exercises.map((exercise) => {
-              const target = getTargetForExercise(exercise)
-              const tags = getExerciseCoachingTags(effectiveWorkout.dayName, exercise)
+                  {/* Warmup */}
+                  <div>
+                    <div className="label mb-1.5">Warmup</div>
+                    <p className="text-sm text-slate-300">{displayWorkout.warmup}</p>
+                  </div>
 
-              return (
-                <div
-                  key={exercise}
-                  className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-slate-100">{exercise}</div>
-                    <div className="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
-                      {target.sets} × {target.reps}
+                  {/* Exercise list */}
+                  <div>
+                    <div className="label mb-2">Exercises</div>
+                    <div className="space-y-2">
+                      {displayWorkout.exercises.map((exercise) => {
+                        const target = getTargetForExercise(exercise)
+                        const tags = getExerciseCoachingTags(displayWorkout.dayName, exercise)
+                        return (
+                          <div
+                            key={exercise}
+                            className="rounded-xl border border-slate-700/60 bg-slate-800/50 px-3 py-2.5"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm text-slate-100">{exercise}</span>
+                              <span className="shrink-0 rounded-full bg-slate-700 px-2.5 py-1 text-xs text-slate-300">
+                                {target.sets} × {target.reps}
+                              </span>
+                            </div>
+                            {tags.length ? (
+                              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                {tags.map((tag) => (
+                                  <span
+                                    key={`${exercise}-${tag}`}
+                                    className="text-[10px] font-semibold text-emerald-400"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
 
-                  {tags.length ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {tags.map((tag) => (
-                        <div
-                          key={`${exercise}-${tag}`}
-                          className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-emerald-300"
-                        >
-                          {tag}
+                  {/* Cardio */}
+                  <div>
+                    <div className="label mb-1.5">Cardio</div>
+                    <p className="text-sm text-slate-300">{displayWorkout.cardio}</p>
+                  </div>
+
+                  {/* Friday governor summary */}
+                  {baseWorkout.dayName === 'Friday' ? (
+                    <div className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-3 space-y-1.5">
+                      <div className="label">Friday Governor</div>
+                      <div className="text-sm text-slate-300">
+                        Basketball:{' '}
+                        <span className="capitalize text-white">
+                          {weeklySettings?.basketball_status ?? 'not answered'}
+                        </span>
+                      </div>
+                      {weeklySettings?.basketball_status === 'yes' ? (
+                        <>
+                          <div className="text-sm text-slate-300">
+                            Detected load:{' '}
+                            <span className="capitalize text-white">{detectedLoad}</span>
+                          </div>
+                          <div className="text-sm text-slate-300">
+                            Morning feel:{' '}
+                            <span className="capitalize text-white">
+                              {weeklySettings?.friday_sleep_quality?.replaceAll('_', ' ') ?? 'not set'}
+                            </span>
+                          </div>
+                        </>
+                      ) : null}
+                      {fridayOutput ? (
+                        <div className="mt-2 rounded-lg bg-slate-800/60 px-3 py-2">
+                          <div className="text-xs font-semibold text-emerald-400">
+                            {getFridayOutputLabel(fridayOutput)}
+                          </div>
+                          <p className="mt-1 text-xs text-slate-400">
+                            {getFridayOutputWhy(fridayOutput)}
+                          </p>
                         </div>
-                      ))}
+                      ) : null}
                     </div>
-                  ) : null}
+                  ) : (
+                    <p className="text-xs text-slate-600">
+                      Form-first progression: Clean → advance · Slight Breakdown → hold · Breakdown → reduce
+                    </p>
+                  )}
                 </div>
-              )
-            })}
-          </div>
-        </div>
-
-        <div>
-          <div className="label mb-2">Cardio</div>
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4 text-slate-100">
-            {effectiveWorkout.cardio}
-          </div>
-        </div>
-
-        {effectiveWorkout.dayName !== 'Friday' ? (
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
-            <div className="label">Progression rule</div>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              Progression should stay form-first. Clean reps earn normal progression. Slight
-              breakdown means hold the load. Clear breakdown means reduce load next time.
-            </p>
-          </div>
-        ) : null}
-      </section>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
 
       <Link
         href="/workout"
