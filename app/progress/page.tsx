@@ -14,7 +14,7 @@ import { loadBodyMetricsHistoryFromSupabase, type BodyMetricRow } from '../../li
 
 function formatValue(value?: number | null, suffix = '') {
   if (value == null) return '—'
-  return `${value}${suffix}`
+  return `${value.toFixed(1)}${suffix}`
 }
 
 function MetricTooltip({
@@ -178,21 +178,21 @@ export default function ProgressPage() {
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
                 <div className="label">Weight</div>
-                <div className="mt-2 text-2xl font-semibold text-white">
+                <div className="mt-2 text-lg font-semibold text-white">
                   {formatValue(latest.weight, ' lb')}
                 </div>
               </div>
 
               <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
                 <div className="label">Body fat</div>
-                <div className="mt-2 text-2xl font-semibold text-white">
+                <div className="mt-2 text-lg font-semibold text-white">
                   {formatValue(latest.body_fat, '%')}
                 </div>
               </div>
 
               <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
                 <div className="label">Water</div>
-                <div className="mt-2 text-2xl font-semibold text-white">
+                <div className="mt-2 text-lg font-semibold text-white">
                   {formatValue(latest.water_percent, '%')}
                 </div>
               </div>
@@ -259,15 +259,15 @@ export default function ProgressPage() {
         {loading ? (
           <p className="text-slate-300">Loading history…</p>
         ) : historyRows.length ? (
-          <div className="overflow-x-auto rounded-2xl border border-slate-700">
-            <table className="min-w-full text-left text-sm text-slate-200">
+          <div className="rounded-2xl border border-slate-700">
+            <table className="w-full text-left text-sm text-slate-200">
               <thead className="bg-slate-900/70">
                 <tr>
-                  <th className="whitespace-nowrap px-4 py-3 font-semibold text-slate-300">Week</th>
-                  <th className="whitespace-nowrap px-4 py-3 font-semibold text-slate-300">Weight</th>
-                  <th className="whitespace-nowrap px-4 py-3 font-semibold text-slate-300">Body Fat</th>
-                  <th className="whitespace-nowrap px-4 py-3 font-semibold text-slate-300">Water</th>
-                  <th className="whitespace-nowrap px-4 py-3 font-semibold text-slate-300">Waist</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-semibold text-slate-300">Week</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-semibold text-slate-300">Weight</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-semibold text-slate-300">Fat</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-semibold text-slate-300">Water</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-semibold text-slate-300">Waist</th>
                 </tr>
               </thead>
               <tbody>
@@ -276,21 +276,11 @@ export default function ProgressPage() {
                     key={`${row.date}-${row.id ?? index}`}
                     className="border-t border-slate-700 bg-slate-900/30"
                   >
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {formatWeekLabel(row.date)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {formatValue(row.weight, ' lb')}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {formatValue(row.body_fat, '%')}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {formatValue(row.water_percent, '%')}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {formatValue(row.waist, '"')}
-                    </td>
+                    <td className="whitespace-nowrap px-3 py-2">{formatWeekLabel(row.date)}</td>
+                    <td className="whitespace-nowrap px-3 py-2">{formatValue(row.weight, ' lb')}</td>
+                    <td className="whitespace-nowrap px-3 py-2">{formatValue(row.body_fat, '%')}</td>
+                    <td className="whitespace-nowrap px-3 py-2">{formatValue(row.water_percent, '%')}</td>
+                    <td className="whitespace-nowrap px-3 py-2">{formatValue(row.waist, '"')}</td>
                   </tr>
                 ))}
               </tbody>
