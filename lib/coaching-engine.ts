@@ -14,6 +14,7 @@ export type CoachingFinding = {
     | 'trunk_fat'
     | 'leg_lean_deficit'
     | 'ecw_tbw'
+    | 'fat_loss_stall'
   severity: FindingSeverity
   title: string
   body: string
@@ -74,12 +75,8 @@ function analyzeWeightTrend(metrics: BodyMetricRow[]): CoachingFinding | null {
       }
     }
 
-    return {
-      type: 'stall',
-      severity: 'warning',
-      title: 'Weight trend stalled',
-      body: `Scale weight is averaging ${avg >= 0 ? '+' : ''}${avg.toFixed(1)} lb/week over recent check-ins — below the −0.5 lb/week target. Consider adding 5 min to cardio on 2 sessions this week.`,
-    }
+    // True stall (both weight and BF flat) is handled by analyzeFatLossStall with tiered response
+    return null
   }
 
   return null
@@ -340,6 +337,88 @@ function analyzeEcwTbw(assessments: InBodyRow[]): CoachingFinding | null {
   return null
 }
 
+function analyzeFatLossStall(
+  metrics: BodyMetricRow[],
+  inbodyAssessments: InBodyRow[]
+): CoachingFinding | null {
+  const sorted = [...metrics]
+    .filter((m) => m.weight != null && m.body_fat != null && m.date)
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  if (sorted.length < 4) return null
+
+  // ECW/TBW noise filter — elevated water balance can mask true fat loss
+  const latestInBody = inbodyAssessments[0]
+  if (latestInBody?.ecw_tbw != null && latestInBody.ecw_tbw > 0.41) return null
+
+  function windowRate(weeksBack: number): { weightRate: number; bfRate: number } | null {
+    const cutoff = weeksAgoDate(weeksBack)
+    const window = sorted.filter((m) => m.date >= cutoff)
+    if (window.length < 2) return null
+
+    const first = window[0]
+    const last = window[window.length - 1]
+    const days = daysBetween(first.date, last.date)
+    if (days < 21) return null // need at least 3 weeks of spread
+
+    const weeks = days / 7
+    return {
+      weightRate: ((last.weight ?? 0) - (first.weight ?? 0)) / weeks,
+      bfRate: ((last.body_fat ?? 0) - (first.body_fat ?? 0)) / weeks,
+    }
+  }
+
+  // Stalled = weight not dropping 0.3 lb/week AND BF% not dropping 0.04%/week
+  function isStalled(r: { weightRate: number; bfRate: number } | null): boolean {
+    if (!r) return false
+    return r.weightRate > -0.3 && r.bfRate > -0.04
+  }
+
+  const w4 = windowRate(4)
+  const w8 = windowRate(8)
+  const w12 = windowRate(12)
+
+  // InBody trunk context
+  const trunkElevated =
+    latestInBody?.fat_trunk != null &&
+    latestInBody?.body_fat_mass != null &&
+    latestInBody.body_fat_mass > 0 &&
+    latestInBody.fat_trunk / latestInBody.body_fat_mass > 0.57
+
+  const trunkNote = trunkElevated
+    ? ' Trunk fat distribution from your last InBody supports this — cardio output is the right lever, and high-tension core work should stay non-negotiable.'
+    : ''
+
+  if (isStalled(w12)) {
+    return {
+      type: 'fat_loss_stall',
+      severity: 'action',
+      title: 'Extended plateau — Tier 3 response',
+      body: `Both weight and body fat have been essentially flat for 12+ weeks. Recommended: protect compound lift load but cut 1 accessory movement per session this week, and redirect that time to higher-intensity cardio. Do not reduce weight on your main lifts — only reduce accessory volume.${trunkNote}`,
+    }
+  }
+
+  if (isStalled(w8)) {
+    return {
+      type: 'fat_loss_stall',
+      severity: 'warning',
+      title: 'Fat loss plateau — Tier 2 response',
+      body: `Weight and body fat have been flat for ~8 weeks. Recommended: add 10 min to cardio on Mon, Wed, and Fri this week. If recovery allows, a light Saturday conditioning session (20 min walk or bike) adds output without stressing the lifting days.${trunkNote}`,
+    }
+  }
+
+  if (isStalled(w4)) {
+    return {
+      type: 'fat_loss_stall',
+      severity: 'warning',
+      title: 'Fat loss plateau — Tier 1 response',
+      body: `Weight and body fat have been flat for ~4 weeks. Recommended: add 5 min to cardio on Mon and Wed this week. One targeted adjustment first — don't escalate before giving this a full week to show an effect.${trunkNote}`,
+    }
+  }
+
+  return null
+}
+
 export function getInBodyDayNotes(
   dayName: string,
   assessment: InBodyRow | null
@@ -405,6 +484,7 @@ export function generateCoachingReport(params: {
     analyzeProgressionStalls(exerciseLogs, workouts),
     analyzeDiscomfortPattern(exerciseLogs, workouts),
     analyzeSessionCompletion(workouts),
+    analyzeFatLossStall(metrics, inbodyAssessments),
     analyzeWeightTrend(metrics),
     analyzeMuscleRetention(inbodyAssessments),
     analyzeVisceralFat(inbodyAssessments),
