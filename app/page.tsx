@@ -10,6 +10,7 @@ import {
   loadTodayCheckInFromSupabase,
   loadTodayWorkoutRecordFromSupabase,
   loadWorkoutHistoryBundleFromSupabase,
+  loadInBodyAssessmentsFromSupabase,
   getEffectiveWorkoutDayNumber,
   hasActiveWeeklyReorder,
   getLocalDateString,
@@ -19,7 +20,10 @@ import {
   type CompletedSessionRow,
   type WorkoutRow,
   type WeeklySettingsRow,
+  type ExerciseLogRow,
+  type InBodyRow,
 } from '@/lib/storage-supabase'
+import { generateCoachingReport, type CoachingFinding } from '@/lib/coaching-engine'
 
 type BodyMetricRow = {
   id?: string
@@ -297,6 +301,8 @@ export default function HomePage() {
   const [todayCheckIn, setTodayCheckIn] = useState<BodyMetricRow | null>(null)
   const [sessions, setSessions] = useState<CompletedSessionRow[]>([])
   const [workouts, setWorkouts] = useState<WorkoutRow[]>([])
+  const [exerciseLogs, setExerciseLogs] = useState<ExerciseLogRow[]>([])
+  const [inbodyAssessments, setInbodyAssessments] = useState<InBodyRow[]>([])
   const [todayWorkoutRecord, setTodayWorkoutRecord] = useState<WorkoutRow | null>(null)
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [basketballStatus, setBasketballStatus] = useState('unsure')
@@ -307,7 +313,7 @@ export default function HomePage() {
       try {
         const weekStart = getWeekStartDate()
 
-        const [metricRows, sessionRows, todayRow, weekly, todayWorkout, workoutBundle] =
+        const [metricRows, sessionRows, todayRow, weekly, todayWorkout, workoutBundle, inbodyRows] =
           await Promise.all([
             loadBodyMetricsHistoryFromSupabase(),
             loadCompletedSessionsFromSupabase(),
@@ -315,11 +321,14 @@ export default function HomePage() {
             getWeeklySettings(weekStart),
             loadTodayWorkoutRecordFromSupabase(),
             loadWorkoutHistoryBundleFromSupabase(),
+            loadInBodyAssessmentsFromSupabase(),
           ])
 
         setMetrics(Array.isArray(metricRows) ? metricRows : [])
         setSessions(Array.isArray(sessionRows) ? sessionRows : [])
         setWorkouts(Array.isArray(workoutBundle?.workouts) ? workoutBundle.workouts : [])
+        setExerciseLogs(Array.isArray(workoutBundle?.logs) ? workoutBundle.logs : [])
+        setInbodyAssessments(Array.isArray(inbodyRows) ? inbodyRows : [])
         setTodayCheckIn(todayRow ?? null)
         setTodayWorkoutRecord(todayWorkout ?? null)
         setWeeklySettings(weekly ?? null)
@@ -329,6 +338,8 @@ export default function HomePage() {
         setMetrics([])
         setSessions([])
         setWorkouts([])
+        setExerciseLogs([])
+        setInbodyAssessments([])
         setTodayCheckIn(null)
         setTodayWorkoutRecord(null)
         setWeeklySettings(null)
@@ -448,6 +459,11 @@ export default function HomePage() {
       loading,
     ]
   )
+
+  const coachReport = useMemo(() => {
+    if (loading) return { findings: [], hasEnoughData: false, dataWeeks: 0 }
+    return generateCoachingReport({ metrics, workouts, exerciseLogs, inbodyAssessments })
+  }, [loading, metrics, workouts, exerciseLogs, inbodyAssessments])
 
   const todayAlternative = todayWorkoutRecord?.status === 'alternative_completed'
   const todayMissed = todayWorkoutRecord?.status === 'missed'
@@ -606,6 +622,61 @@ export default function HomePage() {
             </div>
             <div className="mt-4 text-[1rem] text-slate-300">{todayPlan.duration}</div>
           </>
+        )}
+      </section>
+
+      <section className="card space-y-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <div className="label">Weekly Coach Review</div>
+          {coachReport.dataWeeks > 0 && !loading ? (
+            <span className="text-[10px] text-slate-600">{coachReport.dataWeeks}w of data</span>
+          ) : null}
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-slate-400">Analyzing your data…</p>
+        ) : !coachReport.hasEnoughData ? (
+          <p className="text-sm text-slate-400">
+            Keep logging — the review gets more useful after a few weeks of check-ins and workouts.
+          </p>
+        ) : coachReport.findings.length === 0 ? (
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 shrink-0 text-emerald-400">✓</span>
+            <div>
+              <p className="text-sm font-semibold text-white">All systems on track</p>
+              <p className="mt-1 text-sm text-slate-400">
+                No flags this week. Keep training consistently and logging accurately.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {coachReport.findings.map((finding: CoachingFinding, i: number) => (
+              <div
+                key={i}
+                className={`rounded-2xl border p-4 space-y-1.5 ${
+                  finding.severity === 'action'
+                    ? 'border-rose-500/30 bg-rose-950/20'
+                    : finding.severity === 'warning'
+                      ? 'border-amber-500/30 bg-amber-950/20'
+                      : 'border-slate-700 bg-slate-900/40'
+                }`}
+              >
+                <p
+                  className={`text-sm font-semibold ${
+                    finding.severity === 'action'
+                      ? 'text-rose-300'
+                      : finding.severity === 'warning'
+                        ? 'text-amber-300'
+                        : 'text-slate-200'
+                  }`}
+                >
+                  {finding.title}
+                </p>
+                <p className="text-sm leading-relaxed text-slate-300">{finding.body}</p>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
