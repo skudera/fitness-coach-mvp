@@ -359,6 +359,7 @@ export default function WorkoutLogPage() {
   const [partialNote, setPartialNote] = useState('')
 
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null)
+  const prefilledIndicesRef = useRef<Set<number>>(new Set())
 
   useEffect(() => {
     async function load() {
@@ -619,7 +620,7 @@ export default function WorkoutLogPage() {
       ? getExerciseSubstitutions(currentEntry.name).filter((option) => option !== currentEntry.name)
       : []
 
-  const suggestion = useMemo(() => {
+  const exerciseSuggestion = useMemo(() => {
     if (isRecoveryMode || !currentEntry || !currentTarget) return null
 
     const aliases = getExerciseHistoryAliases(currentEntry.name)
@@ -627,14 +628,52 @@ export default function WorkoutLogPage() {
 
     if (!latest || !latest.topWeight) return null
 
-    return getMachineAwareSuggestion({
+    const suggestion = getMachineAwareSuggestion({
       exerciseName: currentEntry.name,
       targetRepRange: currentTarget.reps,
       topWeight: latest.topWeight,
       topReps: latest.topReps,
       lastDifficulty: latest.lastDifficulty,
     })
+
+    return { suggestion, latest }
   }, [currentEntry, currentTarget, historyLogs, isRecoveryMode])
+
+  const suggestion = exerciseSuggestion?.suggestion ?? null
+  const latestPerf = exerciseSuggestion?.latest ?? null
+
+  useEffect(() => {
+    if (currentIndex < 0 || isRecoveryMode) return
+    if (prefilledIndicesRef.current.has(currentIndex)) return
+    if (!suggestion?.setWeights?.length) return
+
+    setEntries((prev) => {
+      const entry = prev[currentIndex]
+      if (!entry) return prev
+
+      const alreadyHasWeights = entry.sets.some((s) => s.weight.trim() !== '')
+      if (alreadyHasWeights) {
+        prefilledIndicesRef.current.add(currentIndex)
+        return prev
+      }
+
+      prefilledIndicesRef.current.add(currentIndex)
+
+      return prev.map((e, i) => {
+        if (i !== currentIndex) return e
+        return {
+          ...e,
+          sets: e.sets.map((set, setIndex) => ({
+            ...set,
+            weight:
+              suggestion.setWeights[setIndex] != null
+                ? String(suggestion.setWeights[setIndex])
+                : set.weight,
+          })),
+        }
+      })
+    })
+  }, [currentIndex, suggestion, isRecoveryMode])
 
   const recoveryTarget =
     currentEntry && isRecoveryMode ? recoveryConfig.targetByExercise[currentEntry.name] ?? '' : ''
@@ -963,7 +1002,30 @@ export default function WorkoutLogPage() {
               </p>
             ) : null}
 
-            {suggestion ? <p className="text-xs text-emerald-400">{suggestion.note}</p> : null}
+            {latestPerf && suggestion ? (
+              <div className="rounded-xl border border-slate-700/60 bg-slate-900/60 p-3 space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] text-slate-500 uppercase tracking-wide">Last session</span>
+                  <span className="text-xs font-semibold text-slate-200">
+                    {latestPerf.topWeight} lbs × {latestPerf.topReps} reps
+                  </span>
+                  {latestPerf.lastDifficulty ? (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        latestPerf.lastDifficulty === 'Breakdown' || latestPerf.lastDifficulty === 'Too Hard'
+                          ? 'bg-rose-500/20 text-rose-300'
+                          : latestPerf.lastDifficulty === 'Slight Breakdown' || latestPerf.lastDifficulty === 'Hard'
+                            ? 'bg-amber-400/20 text-amber-300'
+                            : 'bg-emerald-500/20 text-emerald-300'
+                      }`}
+                    >
+                      {latestPerf.lastDifficulty}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">{suggestion.note}</p>
+              </div>
+            ) : null}
 
             {coachingTags.length ? (
               <div className="flex flex-wrap gap-2 pt-2">
