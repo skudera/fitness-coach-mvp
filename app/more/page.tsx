@@ -81,6 +81,12 @@ export default function MorePage() {
             title="Evening Recovery"
             description="Mobility, posture, and reset routine for nights."
           />
+
+          <MoreTile
+            href={"/inbody" as Route}
+            title="InBody"
+            description="Upload assessments and track body composition over time."
+          />
         </div>
       </section>
 

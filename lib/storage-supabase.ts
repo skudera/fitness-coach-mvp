@@ -730,6 +730,88 @@ export async function loadEquipmentPreferences(): Promise<EquipmentPreferences |
   return data
 }
 
+export type InBodyRow = {
+  id?: string
+  user_id?: string
+  assessment_date: string
+  weight?: number | null
+  smm?: number | null
+  body_fat_mass?: number | null
+  body_fat_percent?: number | null
+  bmi?: number | null
+  visceral_fat_level?: number | null
+  ecw_tbw?: number | null
+  bmr?: number | null
+  lean_right_arm?: number | null
+  lean_left_arm?: number | null
+  lean_trunk?: number | null
+  lean_right_leg?: number | null
+  lean_left_leg?: number | null
+  lean_right_arm_pct?: number | null
+  lean_left_arm_pct?: number | null
+  lean_trunk_pct?: number | null
+  lean_right_leg_pct?: number | null
+  lean_left_leg_pct?: number | null
+  fat_trunk?: number | null
+  image_path?: string | null
+  notes?: string | null
+  created_at?: string
+}
+
+export async function uploadInBodyImage(file: File): Promise<string> {
+  const userId = await requireUserId()
+  const ext = file.name.split('.').pop() ?? 'jpg'
+  const path = `${userId}/${Date.now()}.${ext}`
+
+  const { error } = await supabase.storage
+    .from('inbody-images')
+    .upload(path, file, { upsert: false })
+
+  if (error) throw error
+  return path
+}
+
+export async function getInBodyImageSignedUrl(path: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from('inbody-images')
+    .createSignedUrl(path, 3600)
+
+  if (error) throw error
+  return data.signedUrl
+}
+
+export async function saveInBodyAssessment(
+  payload: Omit<InBodyRow, 'id' | 'user_id' | 'created_at'>
+): Promise<InBodyRow> {
+  const userId = await requireUserId()
+
+  const { data, error } = await supabase
+    .from('inbody_assessments')
+    .insert([{ user_id: userId, ...payload }])
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as InBodyRow
+}
+
+export async function loadInBodyAssessmentsFromSupabase(): Promise<InBodyRow[]> {
+  const userId = await requireUserId()
+
+  const { data, error } = await supabase
+    .from('inbody_assessments')
+    .select('*')
+    .eq('user_id', userId)
+    .order('assessment_date', { ascending: false })
+
+  if (error) {
+    console.error('InBody load error:', error)
+    return []
+  }
+
+  return (data ?? []) as InBodyRow[]
+}
+
 export async function saveEquipmentPreferences(prefs: EquipmentPreferences) {
   const userId = await requireUserId()
 
