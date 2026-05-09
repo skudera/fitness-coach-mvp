@@ -34,12 +34,12 @@ npx tsc --noEmit # type-check only (run before every commit)
 
 ```
 app/
-  page.tsx                    # Home dashboard
+  page.tsx                    # Home dashboard (Coach Review + Coaching Plan cards)
   layout.tsx                  # Root layout, PWA meta tags, AuthGate wrapper
   icon.tsx                    # Generated favicon (32×32)
   apple-icon.tsx              # Generated iOS home screen icon (180×180)
   checkin/page.tsx            # Monday body metrics check-in
-  plan/page.tsx               # Weekly plan — drag-and-drop reorder + accordion view
+  plan/page.tsx               # Weekly plan — drag-and-drop reorder + accordion + priority badges
   workout/
     page.tsx                  # Workout start / day selection
     log/page.tsx              # Active workout logging (primary workout UI)
@@ -61,10 +61,12 @@ app/
 lib/
   supabase.ts                 # Supabase client, getCurrentUser, requireUserId
   storage-supabase.ts         # All Supabase data helpers (types + CRUD functions)
-  workout-data.ts             # Static workout definitions (exercises, targets)
+  workout-data.ts             # Static workout definitions (exercises, targets, substitutions)
   workout-log-state.ts        # LocalStorage-based in-progress workout state
   progression-engine.ts       # Weight suggestion logic (form-governor)
   recovery-governor.ts        # Friday workout adjustment based on basketball inputs
+  coaching-engine.ts          # Rules-based weekly analysis (11 rules across 3 domains)
+  weekly-plan-engine.ts       # Converts coaching findings → concrete overrides (cardio, priority)
   storage.ts                  # Legacy LocalStorage helpers (old exercise page only)
   mock-data.ts                # Dev mock data
 
@@ -95,8 +97,8 @@ All tables use `user_id uuid references auth.users(id)` + Row Level Security.
 | `exercise_logs` | Per-set logs (exercise_name, set_number, weight, reps, difficulty, discomfort) |
 | `completed_sessions` | Session summary (duration, completed_cardio) |
 | `weekly_settings` | Per-week settings (basketball inputs, Friday recovery, day_order_json) |
-| `user_preferences` | Equipment preferences (pressing, row, leg press, cardio style) |
-| `inbody_assessments` | InBody clinic assessments (SMM, visceral fat, segmental lean/fat, etc.) |
+| `user_preferences` | Equipment preferences + active coaching overrides (coaching_overrides jsonb) |
+| `inbody_assessments` | InBody clinic assessments (SMM, visceral fat, segmental lean/fat, ECW/TBW, etc.) |
 
 ### Supabase Storage
 
@@ -105,18 +107,38 @@ All tables use `user_id uuid references auth.users(id)` + Row Level Security.
 - Access: RLS policies restrict reads/writes to the owning user
 - Signed URLs expire after 1 hour (generated on demand for "View report")
 
-### Key Column: `weekly_settings.day_order_json`
+### Key Columns Added via Migration
 
-JSONB mapping `{ "1": 3, "2": 1, ... }` — calendar day → workout template day.  
-Used by `getEffectiveWorkoutDayNumber()` to resolve which workout runs on each calendar day.  
-Legacy fields `swap_day_one` / `swap_day_two` still fall back to if `day_order_json` is null.
-
-Added via migration:
 ```sql
+-- Weekly day reordering
 alter table weekly_settings add column if not exists day_order_json jsonb default null;
+
+-- Coaching plan overrides (persists until user re-applies)
+alter table user_preferences add column if not exists coaching_overrides jsonb default null;
 ```
 
 `inbody_assessments` table and `inbody-images` storage bucket were created manually (not in schema.sql).
+
+### `weekly_settings.day_order_json`
+
+JSONB mapping `{ "1": 3, "2": 1, ... }` — calendar day → workout template day.
+Used by `getEffectiveWorkoutDayNumber()` to resolve which workout runs on each calendar day.
+Legacy fields `swap_day_one` / `swap_day_two` still fall back to if `day_order_json` is null.
+
+### `user_preferences.coaching_overrides`
+
+JSONB storing the active coaching plan. Shape:
+```json
+{
+  "generated_at": "2026-05-09",
+  "cardio_add_minutes": { "Monday": 5, "Wednesday": 5 },
+  "priority_exercises": ["Weighted Dead-Bug", "Ab Machine"],
+  "decisions": [
+    { "type": "fat_loss_stall", "title": "...", "change": "Cardio +5 min on Mon and Wed", "reason": "..." }
+  ]
+}
+```
+Applied by the user via the Coaching Plan card on the Home page. Persists until the user taps Apply/Update again.
 
 ## Key Architectural Patterns
 
@@ -144,14 +166,57 @@ Set weights are **pre-filled** in the workout log UI when history exists. The us
 ### Recovery Governor (`lib/recovery-governor.ts`)
 Friday workout is adjusted based on basketball inputs collected in `weekly_settings`. `getFridayOutputType()` returns a `FridayOutputType` which drives `getFridayWorkoutFromOutput()`. Basketball timing, load detection, sleep quality, and pain flags all factor in.
 
-### InBody AI Parsing
-`POST /api/parse-inbody` — receives image as multipart form data, sends to `claude-opus-4-7` via vision API, returns structured JSON of all InBody 570 fields. Client shows a review form with pre-filled values before saving. Image is stored in private Supabase Storage; values saved to `inbody_assessments`.
+### Coaching Engine (`lib/coaching-engine.ts`)
+`generateCoachingReport({ metrics, workouts, exerciseLogs, inbodyAssessments })` runs 11 rules and returns `CoachingReport { findings[], hasEnoughData, dataWeeks }`.
 
-InBody data is **intentionally separate** from `body_metrics` — clinic machine vs at-home scale measure differently and should not be mixed.
+**Weekly-data rules** (read from logs + body_metrics):
+- `analyzeWeightTrend` — recomp detection (weight stable, BF dropping → info)
+- `analyzeFatLossStall` — tiered plateau response (4/8/12 week windows, ECW/TBW noise filter)
+- `analyzeDiscomfortPattern` — 3+ discomfort flags in 3 weeks → warning
+- `analyzeSessionCompletion` — 3+ partial/missed in 4 weeks → warning
+- `analyzeProgressionStalls` — same exercise breakdown ×3 sessions → action
+- `analyzeMuscleRetention` — SMM dropped >0.5 lb between InBody assessments → warning
+
+**InBody-snapshot rules** (read from latest `inbody_assessments` row):
+- `analyzeSegmentalImbalance` — arm gap >0.5 lb or leg gap >1.0 lb → info
+- `analyzeVisceralFat` — VFL ≥8 → warning, ≥10 → action
+- `analyzeTrunkFat` — trunk fat >60% of total BF → warning
+- `analyzeLegLeanDeficit` — avg leg lean % <95% → info
+- `analyzeEcwTbw` — ratio >0.40 → info, >0.42 → warning
+
+**Fat loss stall tiers** (set via `finding.tier: 1 | 2 | 3`):
+- Tier 1 (4-week stall): +5 min cardio Mon + Wed
+- Tier 2 (8-week stall): +10 min cardio Mon/Wed/Fri
+- Tier 3 (12-week stall): +10 min cardio Mon/Wed/Fri + cut 1 accessory per session
+
+**Noise filter**: ECW/TBW >0.41 suppresses fat_loss_stall (water retention masking true loss).
+
+### Weekly Plan Engine (`lib/weekly-plan-engine.ts`)
+`buildCoachingOverrides(findings)` converts `CoachingFinding[]` into `CoachingOverrides` with:
+- `cardio_add_minutes` — per day-name additions (applied in workout log to suggested cardio)
+- `priority_exercises` — exercise names to badge in plan accordion and workout log
+- `decisions` — human-readable list of changes + reasons shown in the Coaching Plan card
+
+`getInBodyDayNotes(dayName, assessment)` returns day-specific InBody insight strings shown in plan accordion (arm imbalance on upper days, leg deficit on leg days, trunk fat on core days).
+
+### InBody AI Parsing
+`POST /api/parse-inbody` — receives image as multipart form data, sends to `claude-opus-4-7` via vision API, returns structured JSON of all InBody 570 fields. Client shows editable review form before saving. Image stored in private Supabase Storage; values saved to `inbody_assessments`.
+
+InBody data is **intentionally separate** from `body_metrics` — clinic machine vs at-home scale measure differently and must not be mixed.
+
+## Coaching Plan Flow (End-to-End)
+
+1. Home page loads → `generateCoachingReport()` runs on all data
+2. **Coach Review card** — shows all findings color-coded by severity (rose/amber/slate)
+3. **Coaching Plan card** — shows "Ready to apply" when findings produce actionable overrides
+4. User taps **Apply this week** → `saveCoachingOverrides()` writes to `user_preferences`
+5. Plan page accordion — priority exercises get green border + "priority" badge; cardio shows "+ N min" note
+6. Workout log — `suggestedCardioMinutes` includes coaching addition; labeled "incl. +N min coaching plan"
+7. Overrides persist until user taps **Update** (new analysis) or **Clear**
 
 ## Weekly Day Reordering
 
-Plan page supports full Mon–Fri workout reordering for the current week only. Implemented as drag-and-drop via `@dnd-kit` with `rectSwappingStrategy` (swap semantics, not shift). Order persists in `weekly_settings.day_order_json`. Default template is unaffected.
+Plan page supports full Mon–Fri workout reordering for the current week only. Implemented as drag-and-drop via `@dnd-kit` with `rectSwappingStrategy` (swap semantics, not shift). Each card shows workout focus (first segment only). Order persists in `weekly_settings.day_order_json`. Default template is unaffected.
 
 ## PWA Setup
 
@@ -162,21 +227,16 @@ Plan page supports full Mon–Fri workout reordering for the current week only. 
 - `-webkit-tap-highlight-color: transparent` — removes tap flash
 - Production URL: `https://fitness-coach-mvp.vercel.app` (permanent, never changes between deploys)
 
-## Feature Roadmap Status
+## Feature Roadmap — All Complete
 
-**Tier 1 — Done:**
 1. ✅ Full weekly day reordering (drag-and-drop, `day_order_json`)
 2. ✅ Form-governor engine wired to actual load decisions + pre-fill
 3. ✅ Better planner UI (5-day accordion, full week visible at once)
-
-**Tier 2 — In Progress:**
-4. ✅ InBody manual entry + AI upload (`inbody_assessments`, Claude vision)
-5. ⬜ Dynamic weekly programming (rules engine reading 2–6 weeks of data)
-
-**Tier 3 — Upcoming:**
-6. ⬜ InBody-informed targeted programming
-7. ⬜ Stubborn-fat / belly-fat response system
-8. ⬜ Fully adaptive weekly coaching engine
+4. ✅ InBody upload + AI parsing (`inbody_assessments`, Claude vision)
+5. ✅ Rules-based weekly coaching engine (11 rules, Coach Review card)
+6. ✅ InBody-informed targeted programming (segmental, visceral, trunk, leg lean, ECW/TBW)
+7. ✅ Stubborn-fat plateau response system (tiered cardio adjustments, noise filters)
+8. ✅ Fully adaptive coaching engine (findings → overrides → applied to plan + workout log)
 
 ## Notes
 
@@ -185,3 +245,4 @@ Plan page supports full Mon–Fri workout reordering for the current week only. 
 - `lib/storage.ts` and `app/workout/exercise/[index]/page.tsx` are legacy (old LocalStorage system). Not actively used in the main workout flow but not yet removed.
 - Always run `npx tsc --noEmit` before committing. CI does not run automatically.
 - Do not sync InBody weight/BF% into `body_metrics` — user explicitly wants them separate.
+- The coaching engine runs purely client-side (no extra API calls) — all data is loaded on page mount.
