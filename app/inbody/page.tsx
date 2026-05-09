@@ -159,19 +159,19 @@ function FieldRow({
   step?: string
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <label className="w-36 shrink-0 text-sm text-slate-400">{label}</label>
-      <div className="flex flex-1 items-center gap-1.5">
-        <input
-          type="number"
-          step={step}
-          value={form[field]}
-          onChange={(e) => onChange(field, e.target.value)}
-          className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none"
-          placeholder="—"
-        />
-        <span className="shrink-0 text-xs text-slate-500">{suffix}</span>
-      </div>
+    <div className="flex items-center gap-2">
+      <label className="w-28 shrink-0 text-sm text-slate-400 leading-tight">{label}</label>
+      <input
+        type="number"
+        step={step}
+        value={form[field]}
+        onChange={(e) => onChange(field, e.target.value)}
+        className="flex-1 min-w-0 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none"
+        placeholder="—"
+      />
+      {suffix ? (
+        <span className="w-10 shrink-0 text-xs text-slate-500 text-right">{suffix}</span>
+      ) : null}
     </div>
   )
 }
@@ -420,13 +420,13 @@ export default function InBodyPage() {
               const segLabel = seg.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase())
               return (
                 <div key={seg} className="flex items-center gap-2">
-                  <span className="w-24 shrink-0 text-sm text-slate-400">{segLabel}</span>
+                  <span className="w-20 shrink-0 text-sm text-slate-400">{segLabel}</span>
                   <input
                     type="number"
                     step="0.01"
                     value={form[lbField]}
                     onChange={(e) => handleFieldChange(lbField, e.target.value)}
-                    className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none"
+                    className="flex-1 min-w-0 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none"
                     placeholder="lb"
                   />
                   <input
@@ -434,7 +434,7 @@ export default function InBodyPage() {
                     step="0.1"
                     value={form[pctField]}
                     onChange={(e) => handleFieldChange(pctField, e.target.value)}
-                    className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none"
+                    className="w-20 shrink-0 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none"
                     placeholder="%"
                   />
                 </div>
