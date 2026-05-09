@@ -11,6 +11,8 @@ import {
   loadTodayWorkoutRecordFromSupabase,
   loadWorkoutHistoryBundleFromSupabase,
   loadInBodyAssessmentsFromSupabase,
+  loadCoachingOverrides,
+  saveCoachingOverrides,
   getEffectiveWorkoutDayNumber,
   hasActiveWeeklyReorder,
   getLocalDateString,
@@ -22,8 +24,10 @@ import {
   type WeeklySettingsRow,
   type ExerciseLogRow,
   type InBodyRow,
+  type CoachingOverrides,
 } from '@/lib/storage-supabase'
 import { generateCoachingReport, type CoachingFinding } from '@/lib/coaching-engine'
+import { buildCoachingOverrides } from '@/lib/weekly-plan-engine'
 
 type BodyMetricRow = {
   id?: string
@@ -307,13 +311,15 @@ export default function HomePage() {
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [basketballStatus, setBasketballStatus] = useState('unsure')
   const [loading, setLoading] = useState(true)
+  const [coachingOverrides, setCoachingOverrides] = useState<CoachingOverrides | null>(null)
+  const [planSaving, setPlanSaving] = useState(false)
 
   useEffect(() => {
     async function load() {
       try {
         const weekStart = getWeekStartDate()
 
-        const [metricRows, sessionRows, todayRow, weekly, todayWorkout, workoutBundle, inbodyRows] =
+        const [metricRows, sessionRows, todayRow, weekly, todayWorkout, workoutBundle, inbodyRows, savedOverrides] =
           await Promise.all([
             loadBodyMetricsHistoryFromSupabase(),
             loadCompletedSessionsFromSupabase(),
@@ -322,6 +328,7 @@ export default function HomePage() {
             loadTodayWorkoutRecordFromSupabase(),
             loadWorkoutHistoryBundleFromSupabase(),
             loadInBodyAssessmentsFromSupabase(),
+            loadCoachingOverrides(),
           ])
 
         setMetrics(Array.isArray(metricRows) ? metricRows : [])
@@ -329,6 +336,7 @@ export default function HomePage() {
         setWorkouts(Array.isArray(workoutBundle?.workouts) ? workoutBundle.workouts : [])
         setExerciseLogs(Array.isArray(workoutBundle?.logs) ? workoutBundle.logs : [])
         setInbodyAssessments(Array.isArray(inbodyRows) ? inbodyRows : [])
+        setCoachingOverrides(savedOverrides ?? null)
         setTodayCheckIn(todayRow ?? null)
         setTodayWorkoutRecord(todayWorkout ?? null)
         setWeeklySettings(weekly ?? null)
@@ -340,6 +348,7 @@ export default function HomePage() {
         setWorkouts([])
         setExerciseLogs([])
         setInbodyAssessments([])
+        setCoachingOverrides(null)
         setTodayCheckIn(null)
         setTodayWorkoutRecord(null)
         setWeeklySettings(null)
@@ -464,6 +473,36 @@ export default function HomePage() {
     if (loading) return { findings: [], hasEnoughData: false, dataWeeks: 0 }
     return generateCoachingReport({ metrics, workouts, exerciseLogs, inbodyAssessments })
   }, [loading, metrics, workouts, exerciseLogs, inbodyAssessments])
+
+  const pendingOverrides = useMemo(
+    () => buildCoachingOverrides(coachReport.findings),
+    [coachReport.findings]
+  )
+
+  async function handleApplyPlan() {
+    if (!pendingOverrides) return
+    setPlanSaving(true)
+    try {
+      await saveCoachingOverrides(pendingOverrides)
+      setCoachingOverrides(pendingOverrides)
+    } catch (e) {
+      console.error('Save coaching overrides error', e)
+    } finally {
+      setPlanSaving(false)
+    }
+  }
+
+  async function handleClearPlan() {
+    setPlanSaving(true)
+    try {
+      await saveCoachingOverrides(null)
+      setCoachingOverrides(null)
+    } catch (e) {
+      console.error('Clear coaching overrides error', e)
+    } finally {
+      setPlanSaving(false)
+    }
+  }
 
   const todayAlternative = todayWorkoutRecord?.status === 'alternative_completed'
   const todayMissed = todayWorkoutRecord?.status === 'missed'
@@ -679,6 +718,82 @@ export default function HomePage() {
           </div>
         )}
       </section>
+
+      {(pendingOverrides || coachingOverrides) && !loading ? (
+        <section className="card space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="label">Coaching Plan</div>
+            {coachingOverrides ? (
+              <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-400">
+                Active · {coachingOverrides.generated_at}
+              </span>
+            ) : (
+              <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-amber-400">
+                Ready to apply
+              </span>
+            )}
+          </div>
+
+          {coachingOverrides ? (
+            <>
+              <div className="space-y-2">
+                {coachingOverrides.decisions.map((d, i) => (
+                  <div key={i} className="rounded-xl border border-slate-700 bg-slate-900/40 px-3 py-3 space-y-0.5">
+                    <p className="text-sm font-semibold text-white">{d.change}</p>
+                    <p className="text-xs text-slate-500">{d.reason}</p>
+                  </div>
+                ))}
+              </div>
+              {pendingOverrides && JSON.stringify(pendingOverrides.decisions.map(d => d.type).sort()) !==
+                JSON.stringify(coachingOverrides.decisions.map(d => d.type).sort()) ? (
+                <p className="text-xs text-amber-400">New analysis available — tap Update to refresh.</p>
+              ) : null}
+              <div className="grid grid-cols-2 gap-3">
+                {pendingOverrides ? (
+                  <button
+                    type="button"
+                    onClick={handleApplyPlan}
+                    disabled={planSaving}
+                    className="rounded-[1.25rem] bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
+                  >
+                    {planSaving ? 'Saving…' : 'Update Plan'}
+                  </button>
+                ) : <div />}
+                <button
+                  type="button"
+                  onClick={handleClearPlan}
+                  disabled={planSaving}
+                  className="rounded-[1.25rem] bg-slate-800 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-slate-700 disabled:opacity-50"
+                >
+                  Clear
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-slate-400">
+                Based on current findings, these adjustments are recommended for this week:
+              </p>
+              <div className="space-y-2">
+                {pendingOverrides!.decisions.map((d, i) => (
+                  <div key={i} className="rounded-xl border border-slate-700 bg-slate-900/40 px-3 py-3 space-y-0.5">
+                    <p className="text-sm font-semibold text-white">{d.change}</p>
+                    <p className="text-xs text-slate-500">{d.reason}</p>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleApplyPlan}
+                disabled={planSaving}
+                className="w-full rounded-[1.5rem] bg-emerald-500 px-5 py-4 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400 disabled:opacity-50"
+              >
+                {planSaving ? 'Applying…' : 'Apply this week'}
+              </button>
+            </>
+          )}
+        </section>
+      ) : null}
 
       <section className="card space-y-4">
         <div className="label">{coach.title}</div>

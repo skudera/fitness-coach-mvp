@@ -19,6 +19,7 @@ export type CoachingFinding = {
   title: string
   body: string
   affectedExercises?: string[]
+  tier?: 1 | 2 | 3
 }
 
 export type CoachingReport = {
@@ -393,6 +394,7 @@ function analyzeFatLossStall(
     return {
       type: 'fat_loss_stall',
       severity: 'action',
+      tier: 3,
       title: 'Extended plateau — Tier 3 response',
       body: `Both weight and body fat have been essentially flat for 12+ weeks. Recommended: protect compound lift load but cut 1 accessory movement per session this week, and redirect that time to higher-intensity cardio. Do not reduce weight on your main lifts — only reduce accessory volume.${trunkNote}`,
     }
@@ -402,6 +404,7 @@ function analyzeFatLossStall(
     return {
       type: 'fat_loss_stall',
       severity: 'warning',
+      tier: 2,
       title: 'Fat loss plateau — Tier 2 response',
       body: `Weight and body fat have been flat for ~8 weeks. Recommended: add 10 min to cardio on Mon, Wed, and Fri this week. If recovery allows, a light Saturday conditioning session (20 min walk or bike) adds output without stressing the lifting days.${trunkNote}`,
     }
@@ -411,6 +414,7 @@ function analyzeFatLossStall(
     return {
       type: 'fat_loss_stall',
       severity: 'warning',
+      tier: 1,
       title: 'Fat loss plateau — Tier 1 response',
       body: `Weight and body fat have been flat for ~4 weeks. Recommended: add 5 min to cardio on Mon and Wed this week. One targeted adjustment first — don't escalate before giving this a full week to show an effect.${trunkNote}`,
     }

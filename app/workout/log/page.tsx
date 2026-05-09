@@ -22,8 +22,10 @@ import {
   saveWorkoutAndLogsToSupabase,
   loadExerciseLogHistoryFromSupabase,
   loadEquipmentPreferences,
+  loadCoachingOverrides,
   type ExerciseLogRow,
   type WeeklySettingsRow,
+  type CoachingOverrides,
 } from '@/lib/storage-supabase'
 import {
   loadWorkoutProgress,
@@ -314,6 +316,7 @@ export default function WorkoutLogPage() {
 
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [cardioPreference, setCardioPreference] = useState<string | null>(null)
+  const [coachingOverrides, setCoachingOverrides] = useState<CoachingOverrides | null>(null)
   const [resolvedWorkoutDay, setResolvedWorkoutDay] = useState<number>(todayDay)
 
   const baseWorkout = useMemo(
@@ -365,14 +368,16 @@ export default function WorkoutLogPage() {
     async function load() {
       try {
         const weekStart = getWeekStartDate()
-        const [weekly, prefs] = await Promise.all([
+        const [weekly, prefs, overrides] = await Promise.all([
           getWeeklySettings(weekStart),
           loadEquipmentPreferences(),
+          loadCoachingOverrides(),
         ])
 
         setWeeklySettings(weekly ?? null)
         setBasketballStatus(weekly?.basketball_status ?? 'unsure')
         setCardioPreference(prefs?.cardio_preference ?? null)
+        setCoachingOverrides(overrides ?? null)
 
         const effectiveDay = getEffectiveWorkoutDayNumber(todayDay, weekly ?? null)
         setResolvedWorkoutDay(effectiveDay)
@@ -583,12 +588,18 @@ export default function WorkoutLogPage() {
     return parseFirstNumber(workout.estimatedMinutes)
   }, [workout.estimatedMinutes])
 
+  const coachingCardioAdd = useMemo(
+    () => coachingOverrides?.cardio_add_minutes?.[workout.dayName] ?? 0,
+    [coachingOverrides, workout.dayName]
+  )
+
   const suggestedCardioMinutes = useMemo(() => {
-    return getSuggestedCardioMinutes(
+    const base = getSuggestedCardioMinutes(
       plannedCardioMinutes,
       targetSessionMinutes,
       strengthElapsedMinutes
     )
+    return base + coachingCardioAdd
   }, [plannedCardioMinutes, targetSessionMinutes, strengthElapsedMinutes])
 
   useEffect(() => {
@@ -1419,6 +1430,11 @@ export default function WorkoutLogPage() {
               <div className="mt-2 text-[1.4rem] font-semibold text-white">
                 {suggestedCardioMinutes} min
               </div>
+              {coachingCardioAdd > 0 ? (
+                <div className="mt-1 text-xs font-semibold text-emerald-400">
+                  incl. +{coachingCardioAdd} min coaching plan
+                </div>
+              ) : null}
             </div>
           </div>
 

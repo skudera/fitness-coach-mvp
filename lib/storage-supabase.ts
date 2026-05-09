@@ -1,4 +1,6 @@
 import { requireUserId, supabase } from './supabase'
+import type { CoachingOverrides } from './weekly-plan-engine'
+export type { CoachingOverrides } from './weekly-plan-engine'
 
 export type BodyMetricRow = {
   id?: string
@@ -70,6 +72,7 @@ export type EquipmentPreferences = {
   overhead_press_preference?: string | null
   core_preference?: string | null
   cardio_preference?: string | null
+  coaching_overrides?: CoachingOverrides | null
 }
 
 export type WeeklySettingsRow = {
@@ -830,4 +833,35 @@ export async function saveEquipmentPreferences(prefs: EquipmentPreferences) {
   if (error) {
     console.error('Error saving preferences', error)
   }
+}
+
+export async function saveCoachingOverrides(overrides: CoachingOverrides | null): Promise<void> {
+  const userId = await requireUserId()
+
+  const { error } = await supabase
+    .from('user_preferences')
+    .upsert([{ user_id: userId, coaching_overrides: overrides }], { onConflict: 'user_id' })
+
+  if (error) {
+    console.error('Error saving coaching overrides', error)
+    throw error
+  }
+}
+
+export async function loadCoachingOverrides(): Promise<CoachingOverrides | null> {
+  const userId = await requireUserId()
+
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('coaching_overrides')
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error loading coaching overrides', error)
+    return null
+  }
+
+  return (data?.coaching_overrides as CoachingOverrides | null) ?? null
 }

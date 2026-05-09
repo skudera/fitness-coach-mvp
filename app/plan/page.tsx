@@ -33,10 +33,12 @@ import {
   getWeeklySettings,
   loadEquipmentPreferences,
   loadInBodyAssessmentsFromSupabase,
+  loadCoachingOverrides,
   saveWeeklyDayOrder,
   clearWeeklyDayOrder,
   type WeeklySettingsRow,
   type InBodyRow,
+  type CoachingOverrides,
 } from '@/lib/storage-supabase'
 import { getInBodyDayNotes } from '@/lib/coaching-engine'
 
@@ -168,6 +170,7 @@ export default function PlanPage() {
   const [cardioPreference, setCardioPreference] = useState<string | null>(null)
   const [slotOrder, setSlotOrder] = useState<number[]>([1, 2, 3, 4, 5])
   const [latestInBody, setLatestInBody] = useState<InBodyRow | null>(null)
+  const [coachingOverrides, setCoachingOverrides] = useState<CoachingOverrides | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -178,14 +181,16 @@ export default function PlanPage() {
     async function loadWeekly() {
       try {
         const weekStart = getWeekStartDate()
-        const [weekly, prefs, inbodyRows] = await Promise.all([
+        const [weekly, prefs, inbodyRows, overrides] = await Promise.all([
           getWeeklySettings(weekStart),
           loadEquipmentPreferences(),
           loadInBodyAssessmentsFromSupabase(),
+          loadCoachingOverrides(),
         ])
         setWeeklySettings(weekly ?? null)
         setCardioPreference(prefs?.cardio_preference ?? null)
         setLatestInBody(inbodyRows[0] ?? null)
+        setCoachingOverrides(overrides ?? null)
       } catch (error) {
         console.error('Plan page weekly settings load error', error)
         setWeeklySettings(null)
@@ -427,10 +432,21 @@ export default function PlanPage() {
                         return (
                           <div
                             key={exercise}
-                            className="rounded-xl border border-slate-700/60 bg-slate-800/50 px-3 py-2.5"
+                            className={`rounded-xl border px-3 py-2.5 ${
+                              coachingOverrides?.priority_exercises.includes(exercise)
+                                ? 'border-emerald-500/30 bg-emerald-950/20'
+                                : 'border-slate-700/60 bg-slate-800/50'
+                            }`}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm text-slate-100">{exercise}</span>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="text-sm text-slate-100">{exercise}</span>
+                                {coachingOverrides?.priority_exercises.includes(exercise) ? (
+                                  <span className="shrink-0 text-[10px] font-semibold text-emerald-400">
+                                    priority
+                                  </span>
+                                ) : null}
+                              </div>
                               <span className="shrink-0 rounded-full bg-slate-700 px-2.5 py-1 text-xs text-slate-300">
                                 {target.sets} × {target.reps}
                               </span>
@@ -457,6 +473,15 @@ export default function PlanPage() {
                   <div>
                     <div className="label mb-1.5">Cardio</div>
                     <p className="text-sm text-slate-300">{displayWorkout.cardio}</p>
+                    {(() => {
+                      const add = coachingOverrides?.cardio_add_minutes?.[displayWorkout.dayName]
+                      if (!add) return null
+                      return (
+                        <p className="mt-1 text-xs font-semibold text-emerald-400">
+                          + {add} min coaching plan adjustment
+                        </p>
+                      )
+                    })()}
                   </div>
 
                   {/* Friday governor summary */}
