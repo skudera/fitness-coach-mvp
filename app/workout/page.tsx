@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { getWorkoutForDay, getTargetForExercise } from '@/lib/workout-data'
+import { getWorkoutForDay, getTargetForExercise, applyCardioPreference } from '@/lib/workout-data'
 import {
   detectBasketballLoad,
   getFridayOutputLabel,
@@ -856,7 +856,7 @@ export default function WorkoutPage() {
 
       <section className="card space-y-4">
         <div className="label">Cardio</div>
-        <p className="text-slate-100">{effectiveWorkout.cardio}</p>
+        <p className="text-slate-100">{applyCardioPreference(effectiveWorkout.cardio, cardioPreference)}</p>
       </section>
 
       <section className="card space-y-4">

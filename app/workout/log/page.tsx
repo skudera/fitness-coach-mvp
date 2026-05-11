@@ -1419,6 +1419,13 @@ export default function WorkoutLogPage() {
         <section className="card space-y-4">
           <div className="label">{isRecoveryMode ? recoveryConfig.finishLabel : 'Cardio & Finish'}</div>
 
+          {!isRecoveryMode ? (
+            <div className="rounded-2xl border border-slate-700 bg-slate-900/40 px-4 py-3">
+              <div className="label">Machine</div>
+              <div className="mt-1 text-sm font-semibold text-white">{resolvedCardioText}</div>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-4">
               <div className="label">Strength elapsed</div>
