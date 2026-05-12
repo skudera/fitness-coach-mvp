@@ -345,6 +345,28 @@ export default function WorkoutPage() {
     [effectiveDay]
   )
 
+  async function handleLogGovernorRestDay() {
+    const date = getLocalDateString()
+    try {
+      setSaving(true)
+      const reason = fridayOutput === 'full_rest' ? 'governor_full_rest' : 'governor_walk_only'
+      const record = await saveWorkoutOutcomeToSupabase({
+        date,
+        day_name: effectiveWorkout.dayName,
+        focus: effectiveWorkout.focus,
+        status: 'alternative_completed',
+        alternative_reason: reason,
+        outcome_note: 'Governor-mandated recovery day based on basketball inputs',
+        counts_for_streak: true,
+      })
+      setTodayWorkoutRecord(record)
+    } catch (error) {
+      console.error('Log governor rest day error', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function handleSaveOutcome() {
     const date = getLocalDateString()
 
@@ -888,6 +910,20 @@ export default function WorkoutPage() {
         >
           {hasInProgressWorkout ? 'Resume Workout' : 'Start Workout'}
         </Link>
+      ) : fridayOutput === 'full_rest' || fridayOutput === 'walk_only' ? (
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={handleLogGovernorRestDay}
+            disabled={saving}
+            className="block w-full rounded-[1.75rem] bg-slate-700 px-5 py-5 text-center text-[1rem] font-semibold text-slate-100 transition hover:bg-slate-600 disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Log Recovery Day'}
+          </button>
+          <p className="text-center text-xs text-slate-500">
+            Governor-mandated rest days count toward your streak.
+          </p>
+        </div>
       ) : (
         <div className="rounded-[1.75rem] border border-slate-700 bg-slate-900/40 px-5 py-5 text-center text-[1rem] font-semibold text-slate-200">
           {getFridayUnlockMessage({
