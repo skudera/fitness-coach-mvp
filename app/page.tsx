@@ -92,8 +92,14 @@ function getCurrentWeekdays() {
   })
 }
 
-function getWorkoutStreak(sessionDates: string[]) {
+function localDateStr(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function getWorkoutStreak(sessionDates: string[], restDates: string[] = []) {
   if (!sessionDates.length) return 0
+
+  const restSet = new Set(restDates)
 
   const uniqueSorted = [...new Set(sessionDates)]
     .map((date) => parseLocalDate(date))
@@ -106,10 +112,30 @@ function getWorkoutStreak(sessionDates: string[]) {
     const curr = uniqueSorted[i]
     const diffDays = Math.round((prev.getTime() - curr.getTime()) / 86400000)
 
-    if (diffDays === 1 || (prev.getDay() === 1 && curr.getDay() === 5 && diffDays === 3)) {
+    if (diffDays === 1) {
+      streak += 1
+    } else if (prev.getDay() === 1 && curr.getDay() === 5 && diffDays === 3) {
+      // Standard Mon→Fri weekend bridge
       streak += 1
     } else {
-      break
+      // Check if every gap day is a weekend or a governor-mandated rest day
+      let allExplained = true
+      for (let d = 1; d < diffDays; d++) {
+        const gapDate = new Date(curr)
+        gapDate.setDate(curr.getDate() + d)
+        const dow = gapDate.getDay()
+        const isWeekend = dow === 0 || dow === 6
+        const isRestDay = restSet.has(localDateStr(gapDate))
+        if (!isWeekend && !isRestDay) {
+          allExplained = false
+          break
+        }
+      }
+      if (allExplained) {
+        streak += 1
+      } else {
+        break
+      }
     }
   }
 
@@ -389,11 +415,16 @@ export default function HomePage() {
       if (session.date) dates.add(session.date)
     })
 
+    const GOVERNOR_REST = new Set(['governor_full_rest', 'governor_walk_only'])
+
     workouts.forEach((workout) => {
       if (!workout.date) return
 
       if (workout.status === 'alternative_completed' && workout.counts_for_streak) {
-        dates.add(workout.date)
+        // Governor rest days bridge the gap but don't add to the streak count
+        if (!GOVERNOR_REST.has(workout.alternative_reason ?? '')) {
+          dates.add(workout.date)
+        }
       }
 
       if (workout.status === 'completed_partial') {
@@ -403,6 +434,18 @@ export default function HomePage() {
 
     return [...dates]
   }, [meaningfulSessions, workouts])
+
+  const restDates = useMemo(() => {
+    const GOVERNOR_REST = new Set(['governor_full_rest', 'governor_walk_only'])
+    return workouts
+      .filter(
+        (w) =>
+          w.status === 'alternative_completed' &&
+          GOVERNOR_REST.has(w.alternative_reason ?? '')
+      )
+      .map((w) => w.date)
+      .filter((d): d is string => Boolean(d))
+  }, [workouts])
 
   const todayCompletedSession = useMemo(
     () => meaningfulSessions.find((session) => session.date === todayDate) ?? null,
@@ -437,7 +480,10 @@ export default function HomePage() {
     return weekProgress.every((day) => day.completed)
   }, [weekProgress])
 
-  const streakCount = useMemo(() => getWorkoutStreak(countedWorkoutDates), [countedWorkoutDates])
+  const streakCount = useMemo(
+    () => getWorkoutStreak(countedWorkoutDates, restDates),
+    [countedWorkoutDates, restDates]
+  )
 
   const coach = useMemo(
     () =>
