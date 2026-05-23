@@ -79,14 +79,17 @@ export default function CheckInPage() {
 
       const date = getLocalDateString()
 
-      await saveBodyMetricToSupabase({
-        date,
-        weight: weight.trim() ? Number(weight) : null,
-        body_fat: bodyFat.trim() ? Number(bodyFat) : null,
-        water_percent: waterPercent.trim() ? Number(waterPercent) : null,
-        waist: waist.trim() ? Number(waist) : null,
-        notes: notes.trim() || null,
-      })
+      const hasMetrics = weight.trim() || bodyFat.trim() || waterPercent.trim() || waist.trim() || notes.trim()
+      if (hasMetrics) {
+        await saveBodyMetricToSupabase({
+          date,
+          weight: weight.trim() ? Number(weight) : null,
+          body_fat: bodyFat.trim() ? Number(bodyFat) : null,
+          water_percent: waterPercent.trim() ? Number(waterPercent) : null,
+          waist: waist.trim() ? Number(waist) : null,
+          notes: notes.trim() || null,
+        })
+      }
 
       await saveWeeklyBasketball(getWeekStartDate(), basketballStatus)
       router.push('/')

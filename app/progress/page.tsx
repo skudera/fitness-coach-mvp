@@ -139,7 +139,8 @@ export default function ProgressPage() {
   }, [])
 
   const latest = useMemo(() => {
-    return metrics.length ? metrics[metrics.length - 1] : null
+    const reversed = [...metrics].reverse()
+    return reversed.find((row) => row.weight != null || row.body_fat != null || row.water_percent != null) ?? null
   }, [metrics])
 
   const latestWithMeasurements = useMemo(() => {
@@ -158,7 +159,9 @@ export default function ProgressPage() {
   }, [metrics])
 
   const historyRows = useMemo(() => {
-    return [...metrics].reverse()
+    return [...metrics]
+      .reverse()
+      .filter((row) => row.weight != null || row.body_fat != null || row.water_percent != null || row.waist != null)
   }, [metrics])
 
   return (
