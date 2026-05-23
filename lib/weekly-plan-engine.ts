@@ -15,7 +15,8 @@ export type CoachingOverrides = {
 }
 
 const CORE_EXERCISES = [
-  'Weighted Dead-Bug',
+  'Dead-Bug',
+  'Ab Wheel or Dead-Bug',
   'Weighted Cable Crunch',
   'Ab Machine',
   "Captain's Chair Leg Raise",

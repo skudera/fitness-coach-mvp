@@ -1404,6 +1404,8 @@ export default function WorkoutLogPage() {
                 />
               </div>
 
+              {error ? <p className="text-sm text-red-400">{error}</p> : null}
+
               <button
                 type="button"
                 onClick={handleFinishPartialWorkout}

@@ -369,15 +369,15 @@ export function getFridayWorkoutFromOutput(
     default:
       return {
         dayName: 'Friday',
-        focus: 'Lower / Conditioning',
-        estimatedMinutes: '50–60 min planned',
+        focus: 'Legs / Arms / Conditioning',
+        estimatedMinutes: '60–70 min planned',
         warmup: '5 min treadmill + lower body mobility',
         exercises: [
           'Hack Squat',
           'Seated Hamstring Curl',
           'Adductor Machine',
           'Abductor Machine',
-          'Rotary Calf',
+          'Cable Curl',
           'Ab Machine',
         ],
         cardio: `${preferredCardio} – 15 min`,

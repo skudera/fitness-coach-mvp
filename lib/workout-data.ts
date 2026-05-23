@@ -35,90 +35,90 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
     case 1:
       return {
         dayName: 'Monday',
-        focus: 'Chest / Shoulders / Biceps / Core / Cardio',
-        estimatedMinutes: '75 min planned',
-        warmup: '5 min treadmill + shoulder mobility',
+        focus: 'Chest / Biceps / Posture',
+        estimatedMinutes: '70 min planned',
+        warmup: '5 min treadmill + band pull-aparts (2×15)',
         exercises: [
-          'Smith Machine Incline Chest Press',
           'Flat Chest Press Machine',
-          'Cable Lateral Raise',
-          'Rear Delt Machine',
+          'Incline Chest Press Machine',
           'Cable Curl',
-          'Weighted Dead-Bug',
+          'Hammer Curl',
+          'Face Pull',
+          'Dead-Bug',
         ],
-        cardio: 'Elliptical – 12 min',
+        cardio: 'Curve treadmill – 12 min',
         restDay: false,
       }
 
     case 2:
       return {
         dayName: 'Tuesday',
-        focus: 'Back / Triceps / Core / Cardio',
+        focus: 'Back / Rear Delts / Posture',
         estimatedMinutes: '75 min planned',
-        warmup: '5 min treadmill + band work',
+        warmup: '5 min treadmill + band pull-aparts (2×15)',
         exercises: [
           'Vertical Traction Machine',
           'Seated Row Machine',
           'Straight Arm Pulldown',
+          'Rear Delt Machine',
           'Face Pull',
-          'Triceps Pressdown',
           'Weighted Cable Crunch',
         ],
-        cardio: 'Bike – 12 min',
+        cardio: 'Curve treadmill – 12 min',
         restDay: false,
       }
 
     case 3:
       return {
         dayName: 'Wednesday',
-        focus: 'Legs / Posterior Chain / Core / Cardio',
+        focus: 'Legs / Posterior Chain / Core',
         estimatedMinutes: '75 min planned',
         warmup: '5 min treadmill + lower body mobility',
         exercises: [
           'Seated Hamstring Curl',
           'Leg Press (45° Plate Loaded)',
-          'Glute Bridge',
+          'Glute Bridge or Hip Thrust',
           'Leg Extension',
-          'Weighted Dead-Bug',
+          'Ab Wheel or Dead-Bug',
           'Rotary Calf',
         ],
-        cardio: 'Elliptical – 12 min',
+        cardio: 'Curve treadmill – 12 min',
         restDay: false,
       }
 
     case 4:
       return {
         dayName: 'Thursday',
-        focus: 'Upper Mixed / Core / Basketball',
-        estimatedMinutes: '70 min planned',
-        warmup: '5 min treadmill + upper mobility',
+        focus: 'Triceps / Shoulders (Corrective) / Core',
+        estimatedMinutes: '65 min planned',
+        warmup: '5 min treadmill + upper mobility + band pull-aparts',
         exercises: [
-          'Flat Chest Press Machine',
-          'Vertical Traction Machine',
+          'Triceps Pressdown',
+          'Overhead Triceps Extension',
           'Cable Lateral Raise',
+          'Rear Delt Machine',
           'Face Pull',
-          'Cable Curl',
           "Captain's Chair Leg Raise",
         ],
-        cardio: 'Cardio optional depending on basketball',
+        cardio: 'Optional depending on PT schedule',
         restDay: false,
       }
 
     case 5:
       return {
         dayName: 'Friday',
-        focus: 'Lower / Conditioning',
-        estimatedMinutes: '50–60 min planned',
+        focus: 'Legs / Arms / Conditioning',
+        estimatedMinutes: '60–70 min planned',
         warmup: '5 min treadmill + lower body mobility',
         exercises: [
           'Hack Squat',
           'Seated Hamstring Curl',
           'Adductor Machine',
           'Abductor Machine',
-          'Rotary Calf',
+          'Cable Curl',
           'Ab Machine',
         ],
-        cardio: 'Preferred cardio machine – 15 min',
+        cardio: 'Curve treadmill – 15 min',
         restDay: false,
       }
 
@@ -160,9 +160,51 @@ export function getWeekPlan() {
 export function getTargetForExercise(exerciseName: string): ExerciseTarget {
   const name = exerciseName.toLowerCase()
 
+  // exact match for unilateral cue
+  if (name === 'dead-bug') {
+    return { sets: 3, reps: '8/side' }
+  }
+
+  // 3×8–10
+  if (name.includes('ab wheel')) {
+    return { sets: 3, reps: '8–10' }
+  }
+
+  // 3×15–20
+  if (name.includes('face pull') || name.includes('rear delt')) {
+    return { sets: 3, reps: '15–20' }
+  }
+
+  // 3×12–15
   if (
-    name.includes('smith machine incline chest press') ||
-    name.includes('flat chest press machine') ||
+    name.includes('weighted cable crunch') ||
+    name.includes('glute bridge') ||
+    name.includes('hip thrust') ||
+    name.includes('lateral raise') ||
+    name.includes('adductor') ||
+    name.includes('abductor') ||
+    name.includes('ab machine') ||
+    name.includes("captain's chair")
+  ) {
+    return { sets: 3, reps: '12–15' }
+  }
+
+  // 3×10–12
+  if (
+    name.includes('curl') ||
+    name.includes('pressdown') ||
+    name.includes('overhead triceps') ||
+    name.includes('straight arm pulldown') ||
+    name.includes('hamstring curl') ||
+    name.includes('leg extension') ||
+    name.includes('calf')
+  ) {
+    return { sets: 3, reps: '10–12' }
+  }
+
+  // 3×8–12
+  if (
+    name.includes('chest press machine') ||
     name.includes('vertical traction machine') ||
     name.includes('pulldown') ||
     name.includes('row') ||
@@ -172,44 +214,6 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
     return { sets: 3, reps: '8–12' }
   }
 
-  if (
-    name.includes('lateral raise') ||
-    name.includes('rear delt') ||
-    name.includes('fly') ||
-    name.includes('curl') ||
-    name.includes('calf') ||
-    name.includes('adductor') ||
-    name.includes('abductor') ||
-    name.includes('pressdown') ||
-    name.includes('face pull') ||
-    name.includes('hamstring curl') ||
-    name.includes('leg extension')
-  ) {
-    return { sets: 3, reps: '8–12' }
-  }
-
-  if (
-    name.includes('weighted cable crunch') ||
-    name.includes('weighted dead-bug') ||
-    name.includes("captain's chair")
-  ) {
-    return { sets: 3, reps: '8–12' }
-  }
-
-  if (
-    name.includes('ab machine') ||
-    name.includes('crunch') ||
-    name.includes('mobility') ||
-    name.includes('stretch') ||
-    name.includes('plank') ||
-    name.includes('bird-dog') ||
-    name.includes('glute bridge') ||
-    name.includes('dead hang') ||
-    name.includes('child')
-  ) {
-    return { sets: 3, reps: '10–15' }
-  }
-
   return { sets: 3, reps: '8–12' }
 }
 
@@ -217,7 +221,6 @@ export function getExerciseCue(exerciseName: string): string | null {
   const name = exerciseName.toLowerCase()
 
   if (
-    name.includes('smith machine incline chest press') ||
     name.includes('flat chest press machine') ||
     name.includes('vertical traction machine') ||
     name.includes('leg press (45')
@@ -225,28 +228,60 @@ export function getExerciseCue(exerciseName: string): string | null {
     return '3-sec eccentric'
   }
 
+  if (name.includes('incline chest press machine')) {
+    return 'light load right side if needed'
+  }
+
+  if (name.includes('seated row machine')) {
+    return 'squeeze scapulas at finish'
+  }
+
   if (name.includes('cable lateral raise')) {
-    return 'Clean reps only'
+    return 'strict form, right side conservative'
+  }
+
+  if (name.includes('face pull')) {
+    return 'posture priority'
+  }
+
+  if (name.includes('rear delt')) {
+    return 'high rep, posture focus'
   }
 
   if (name.includes('weighted cable crunch')) {
-    return 'Brace hard, no momentum'
+    return 'high-tension core'
   }
 
-  if (name.includes('weighted dead-bug')) {
-    return 'Slow control, ribs down'
+  if (name.includes('dead-bug')) {
+    return 'anti-extension core'
+  }
+
+  if (name.includes('ab wheel')) {
+    return 'APT correction'
+  }
+
+  if (name.includes('glute bridge') || name.includes('hip thrust')) {
+    return 'glute activation'
+  }
+
+  if (name.includes('overhead triceps')) {
+    return 'left arm bias or both light'
   }
 
   if (name.includes("captain's chair")) {
-    return 'Controlled eccentric'
-  }
-
-  if (name.includes('glute bridge')) {
-    return 'Pause and squeeze at top'
+    return 'controlled eccentric'
   }
 
   if (name.includes('seated hamstring curl')) {
-    return 'Control the lowering phase'
+    return 'posterior chain priority'
+  }
+
+  if (name.includes('hack squat')) {
+    return 'form-first'
+  }
+
+  if (name.includes('ab machine')) {
+    return 'high-tension core'
   }
 
   return null
@@ -255,12 +290,12 @@ export function getExerciseCue(exerciseName: string): string | null {
 export function getExerciseSubstitutions(exerciseName: string): string[] {
   const name = exerciseName.toLowerCase()
 
-  if (name.includes('smith machine incline chest press')) {
-    return ['Flat Chest Press Machine', 'Cable Chest Press', 'Assisted Dip']
+  if (name.includes('incline chest press machine')) {
+    return ['Flat Chest Press Machine', 'Cable Chest Press', 'Pec Deck Fly']
   }
 
   if (name.includes('flat chest press machine')) {
-    return ['Smith Machine Incline Chest Press', 'Cable Chest Press', 'Pec Deck Fly']
+    return ['Incline Chest Press Machine', 'Cable Chest Press', 'Pec Deck Fly']
   }
 
   if (name.includes('cable lateral raise')) {
@@ -299,12 +334,28 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
     return ['Hammer Curl', 'EZ Bar Curl', 'Preacher Curl Machine']
   }
 
+  if (name.includes('hammer curl')) {
+    return ['Cable Curl', 'EZ Bar Curl', 'Preacher Curl Machine']
+  }
+
+  if (name.includes('overhead triceps')) {
+    return ['Triceps Pressdown', 'Overhead Rope Extension', 'Assisted Dip']
+  }
+
   if (name.includes('weighted cable crunch')) {
     return ['Ab Machine', "Captain's Chair Leg Raise", 'Plank']
   }
 
-  if (name.includes('weighted dead-bug')) {
+  if (name.includes('ab wheel or dead-bug')) {
     return ['Ab Machine', 'Weighted Cable Crunch', 'Plank']
+  }
+
+  if (name.includes('dead-bug')) {
+    return ['Ab Machine', 'Weighted Cable Crunch', 'Plank']
+  }
+
+  if (name.includes('glute bridge or hip thrust')) {
+    return ['Hip Thrust Machine', 'Back Extension', 'Seated Hamstring Curl']
   }
 
   if (name.includes("captain's chair")) {
@@ -369,13 +420,12 @@ export function applyCardioPreference(
 
 export function getExerciseHistoryAliases(exerciseName: string): string[] {
   const map: Record<string, string[]> = {
-    'Smith Machine Incline Chest Press': [
-      'Smith Machine Incline Chest Press',
-      'Incline Chest Press Machine',
-      'Incline DB Press',
-      'Smith Incline Press',
-    ],
     'Flat Chest Press Machine': ['Flat Chest Press Machine', 'Machine Chest Press'],
+    'Incline Chest Press Machine': [
+      'Incline Chest Press Machine',
+      'Smith Machine Incline Chest Press',
+      'Incline DB Press',
+    ],
     'Pec Deck Fly': ['Pec Deck Fly', 'Cable Fly', 'Pec Deck'],
     'Cable Fly': ['Cable Fly', 'Pec Deck Fly'],
     'Cable Chest Press': ['Cable Chest Press', 'Machine Chest Press'],
@@ -422,7 +472,16 @@ export function getExerciseHistoryAliases(exerciseName: string): string[] {
     'Ab Machine': ['Ab Machine'],
     'Cable Crunch': ['Cable Crunch', 'Weighted Cable Crunch'],
     'Weighted Cable Crunch': ['Weighted Cable Crunch', 'Cable Crunch'],
-    'Weighted Dead-Bug': ['Weighted Dead-Bug', 'Dead-Bug', 'Dead Bug'],
+    'Dead-Bug': ['Dead-Bug', 'Dead Bug', 'Weighted Dead-Bug'],
+    'Ab Wheel or Dead-Bug': ['Ab Wheel or Dead-Bug', 'Ab Wheel', 'Dead-Bug'],
+    'Glute Bridge or Hip Thrust': [
+      'Glute Bridge or Hip Thrust',
+      'Glute Bridge',
+      'Hip Bridge',
+      'Hip Thrust Machine',
+    ],
+    'Overhead Triceps Extension': ['Overhead Triceps Extension', 'Overhead Rope Extension'],
+    'Hammer Curl': ['Hammer Curl'],
     "Captain's Chair Leg Raise": [
       "Captain's Chair Leg Raise",
       'Roman Chair Leg Raise',

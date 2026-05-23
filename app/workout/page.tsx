@@ -102,28 +102,28 @@ function getDayEmphasis(dayName: string) {
   switch (dayName) {
     case 'Monday':
       return {
-        title: 'Today’s emphasis',
-        body: 'Keep machine presses controlled and joint-friendly. Use a 3-second lowering phase on your primary chest pressing and keep all shoulder work clean.',
+        title: "Today's emphasis",
+        body: 'Machine pressing only - right shoulder loading stays conservative. Face pulls and dead-bugs are the priority, not the finisher. Treat posture work as the most important thing you do today.',
       }
     case 'Tuesday':
       return {
-        title: 'Today’s emphasis',
-        body: 'Back work should stay smooth and controlled, and core work should feel like real high-tension training instead of a throwaway finisher.',
+        title: "Today's emphasis",
+        body: 'Pulling emphasis is your best friend right now - builds the upper back strength that corrects rounded shoulders. Scapula squeeze on every row, high reps on rear delts and face pulls.',
       }
     case 'Wednesday':
       return {
-        title: 'Today’s emphasis',
-        body: 'Prioritize hamstrings, glutes, and trunk control so leg day supports posture and pelvis position, not just quad fatigue.',
+        title: "Today's emphasis",
+        body: 'Hamstring and glute bias directly addresses anterior pelvic tilt. Posterior chain strength pulls your pelvis into neutral over time. Own the eccentric on leg press.',
       }
     case 'Thursday':
       return {
-        title: 'Today’s emphasis',
-        body: 'Keep mixed upper work clean before basketball. Lateral raises should stay strict and shoulder mechanics should never get sloppy.',
+        title: "Today's emphasis",
+        body: 'Lateral raises stay strict and light. No overhead pressing - shoulder work is purely corrective and isolation-based today.',
       }
     case 'Friday':
       return {
-        title: 'Today’s emphasis',
-        body: 'Let basketball recovery drive the day. Friday should adapt to your load and sleep, not force the original template.',
+        title: "Today's emphasis",
+        body: 'Lower body second hit of the week with arm volume added. Friday governor still applies based on energy and PT schedule.',
       }
     default:
       return null
@@ -136,7 +136,6 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
 
   if (
     name.includes('chest press machine') ||
-    name.includes('smith machine incline chest press') ||
     name.includes('vertical traction machine') ||
     name.includes('lat pulldown') ||
     name.includes('leg press')
@@ -144,25 +143,33 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
     tags.push('3-sec eccentric')
   }
 
-  if (name.includes('cable crunch') || name.includes('ab machine') || name.includes('dead-bug')) {
+  if (
+    name.includes('cable crunch') ||
+    name.includes('ab machine') ||
+    name.includes('dead-bug') ||
+    name.includes('ab wheel')
+  ) {
     tags.push('high-tension core')
+  }
+
+  if (name.includes('face pull') || name.includes('rear delt')) {
+    tags.push('posture priority')
   }
 
   if (dayName === 'Wednesday' && name.includes('hamstring curl')) {
     tags.push('posterior chain priority')
   }
 
-  if (dayName === 'Wednesday' && (name.includes('glute bridge') || name.includes('abductor machine'))) {
-    tags.push('glute support')
+  if (dayName === 'Wednesday' && (name.includes('glute bridge') || name.includes('hip thrust'))) {
+    tags.push('glute activation')
   }
 
-  if (dayName === 'Thursday' && name.includes('lateral raise')) {
+  if (name.includes('lateral raise')) {
     tags.push('strict form')
   }
 
   if (
     name.includes('chest press machine') ||
-    name.includes('smith machine incline chest press') ||
     name.includes('vertical traction machine') ||
     name.includes('lat pulldown') ||
     name.includes('row') ||
