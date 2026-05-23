@@ -387,11 +387,13 @@ export default function HomePage() {
     load()
   }, [])
 
-  const latestMetric = useMemo(
-    () => (metrics.length ? metrics[metrics.length - 1] : null),
-    [metrics]
-  )
-  const oldestMetric = useMemo(() => (metrics.length ? metrics[0] : null), [metrics])
+  const latestMetric = useMemo(() => {
+    const reversed = [...metrics].reverse()
+    return reversed.find((row) => row.weight != null || row.body_fat != null || row.water_percent != null) ?? null
+  }, [metrics])
+  const oldestMetric = useMemo(() => {
+    return metrics.find((row) => row.weight != null || row.body_fat != null || row.water_percent != null) ?? null
+  }, [metrics])
 
   const latestWaist = useMemo(() => {
     const reversed = [...metrics].reverse()
