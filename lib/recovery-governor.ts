@@ -1,4 +1,4 @@
-import type { WorkoutDefinition } from './workout-data'
+import { getWorkoutForDay, type WorkoutDefinition } from './workout-data'
 
 export type BasketballTiming = 'standard' | 'late' | null
 export type BasketballImpact = 'no_issue' | 'pain_issue' | null
@@ -367,21 +367,6 @@ export function getFridayWorkoutFromOutput(
 
     case 'regular':
     default:
-      return {
-        dayName: 'Friday',
-        focus: 'Legs / Arms / Conditioning',
-        estimatedMinutes: '60–70 min planned',
-        warmup: '5 min treadmill + lower body mobility',
-        exercises: [
-          'Hack Squat',
-          'Seated Hamstring Curl',
-          'Adductor Machine',
-          'Abductor Machine',
-          'Cable Curl',
-          'Ab Machine',
-        ],
-        cardio: `${preferredCardio} – 15 min`,
-        restDay: false,
-      }
+      return getWorkoutForDay(5)
   }
 }

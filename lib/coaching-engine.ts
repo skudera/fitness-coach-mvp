@@ -431,7 +431,7 @@ export function getInBodyDayNotes(
 
   const isUpperDay =
     dayName === 'Monday' || dayName === 'Tuesday' || dayName === 'Thursday'
-  const isLegDay = dayName === 'Wednesday' || dayName === 'Friday'
+  const isLegDay = dayName === 'Sunday' || dayName === 'Friday'
 
   // Arm imbalance note — upper days
   if (isUpperDay && assessment.lean_right_arm != null && assessment.lean_left_arm != null) {

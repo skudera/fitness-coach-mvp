@@ -1,3 +1,10 @@
+/**
+ * Logs created before this date are ignored when suggesting weights. Pre-surgery
+ * history overstates current strength, so the first session after the return
+ * starts from what you enter, then normal progression resumes from there.
+ */
+export const PROGRESSION_FRESH_START = '2026-11-29'
+
 export type ProgressionDirection = 'up' | 'down' | 'hold'
 
 export type SuggestedLoad = {
