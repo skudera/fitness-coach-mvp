@@ -80,7 +80,7 @@ function getCurrentWeekdays() {
   monday.setDate(today.getDate() + mondayOffset)
   monday.setHours(0, 0, 0, 0)
 
-  const labels = ['M', 'T', 'W', 'T', 'F']
+  const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
   return labels.map((label, index) => {
     const date = new Date(monday)
@@ -114,19 +114,15 @@ function getWorkoutStreak(sessionDates: string[], restDates: string[] = []) {
 
     if (diffDays === 1) {
       streak += 1
-    } else if (prev.getDay() === 1 && curr.getDay() === 5 && diffDays === 3) {
-      // Standard Mon→Fri weekend bridge
-      streak += 1
     } else {
-      // Check if every gap day is a weekend or a governor-mandated rest day
+      // Saturday and Sunday are scheduled sessions now, so only governor-mandated
+      // rest days can explain a gap.
       let allExplained = true
       for (let d = 1; d < diffDays; d++) {
         const gapDate = new Date(curr)
         gapDate.setDate(curr.getDate() + d)
-        const dow = gapDate.getDay()
-        const isWeekend = dow === 0 || dow === 6
         const isRestDay = restSet.has(localDateStr(gapDate))
-        if (!isWeekend && !isRestDay) {
+        if (!isRestDay) {
           allExplained = false
           break
         }
@@ -608,7 +604,7 @@ export default function HomePage() {
 
           {perfectWeek && !loading ? (
             <div className="mt-3 text-[1rem] font-semibold text-emerald-400">
-              Perfect week: 5 for 5 🔥
+              Perfect week: 7 for 7 🔥
             </div>
           ) : null}
         </div>

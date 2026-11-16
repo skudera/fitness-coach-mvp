@@ -35,7 +35,7 @@ import {
   type WorkoutExerciseEntry,
   type WorkoutProgressState,
 } from '@/lib/workout-log-state'
-import { getMachineAwareSuggestion } from '@/lib/progression-engine'
+import { getMachineAwareSuggestion, PROGRESSION_FRESH_START } from '@/lib/progression-engine'
 
 type RecoveryFlowConfig = {
   isRecovery: boolean
@@ -51,11 +51,11 @@ function createBlankSets(count = 3) {
   return Array.from({ length: count }, () => ({ weight: '', reps: '' }))
 }
 
-function buildInitialEntries(exercises: string[], setCount = 3): WorkoutExerciseEntry[] {
+function buildInitialEntries(exercises: string[], fixedSetCount?: number): WorkoutExerciseEntry[] {
   return exercises.map((name) => ({
     name,
     substitutedFrom: null,
-    sets: createBlankSets(setCount),
+    sets: createBlankSets(fixedSetCount ?? getTargetForExercise(name).sets),
     difficulty: '',
     discomfortLocation: 'None',
     discomfortSeverity: '',
@@ -92,8 +92,10 @@ function getResolvedThursdayCardio(status: string) {
 
 function getLatestPerformance(logs: ExerciseLogRow[], aliases: string[]) {
   const aliasSet = new Set(aliases)
+  const freshStartMs = new Date(PROGRESSION_FRESH_START).getTime()
   const relevant = [...logs]
     .filter((log) => aliasSet.has(log.exercise_name))
+    .filter((log) => new Date(log.created_at ?? 0).getTime() >= freshStartMs)
     .sort((a, b) => {
       const aTime = new Date(a.created_at ?? 0).getTime()
       const bTime = new Date(b.created_at ?? 0).getTime()
@@ -265,11 +267,11 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
     tags.push('high-tension core')
   }
 
-  if (dayName === 'Wednesday' && name.includes('hamstring curl')) {
+  if (dayName === 'Sunday' && name.includes('hamstring curl')) {
     tags.push('posterior chain priority')
   }
 
-  if (dayName === 'Wednesday' && (name.includes('abductor machine') || name.includes('glute bridge'))) {
+  if (dayName === 'Sunday' && (name.includes('abductor machine') || name.includes('glute bridge'))) {
     tags.push('glute support')
   }
 
@@ -431,7 +433,7 @@ export default function WorkoutLogPage() {
     const expectedNames = workout.exercises.join('|')
 
     if (currentNames !== expectedNames) {
-      setEntries(buildInitialEntries(workout.exercises, isRecoveryMode ? 1 : 3))
+      setEntries(buildInitialEntries(workout.exercises, isRecoveryMode ? 1 : undefined))
     }
   }, [
     isLoaded,
@@ -1231,7 +1233,8 @@ export default function WorkoutLogPage() {
                       Set {setIndex + 1}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className={`grid gap-2 ${currentTarget?.bodyweight ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                      {currentTarget?.bodyweight ? null : (
                       <input
                         value={set.weight}
                         onChange={(e) => updateSetValue(setIndex, 'weight', e.target.value)}
@@ -1243,6 +1246,7 @@ export default function WorkoutLogPage() {
                             : 'Weight'
                         }
                       />
+                      )}
 
                       <input
                         value={set.reps}

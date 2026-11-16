@@ -44,16 +44,20 @@ import { getInBodyDayNotes } from '@/lib/coaching-engine'
 
 function getDayEmphasis(dayName: string) {
   switch (dayName) {
+    case 'Sunday':
+      return 'Leg day should bias hamstrings, glutes, and trunk tension so the session supports posture and pelvic position, not just quad fatigue.'
     case 'Monday':
-      return 'Chest and shoulder work should stay controlled. Prioritize clean reps and a slow lowering phase on primary machine presses.'
+      return 'Chest work stays controlled with a slow lowering phase. Pressing is being reintroduced after shoulder surgery — start light and progress only when every rep is pain-free. Wall push-up plus keeps the serratus working.'
     case 'Tuesday':
       return 'Back work stays controlled and core work should be treated as high-tension work, not just filler at the end.'
     case 'Wednesday':
-      return 'Leg day should bias hamstrings, glutes, and trunk tension so the session supports posture and pelvic position, not just quad fatigue.'
+      return 'Easy run before work. Conversational pace, no pace goal, then a short mobility block.'
     case 'Thursday':
-      return 'Mixed upper day should stay clean and athletic. Keep lateral raises strict and avoid swinging or chasing sloppy reps before basketball.'
+      return 'Corrective shoulder day. Keep lateral raises strict, keep I-Y-T raises very light, and treat the shoulder press as a gentle reintroduction.'
     case 'Friday':
-      return 'Friday should reflect your basketball recovery inputs first. Let the governor decide whether this is a normal lift, a recovery flow, or a lighter day.'
+      return 'Second leg day of the week with arm volume added. The Friday governor can still lighten it based on recovery inputs.'
+    case 'Saturday':
+      return 'Easy outdoor run. Keep it relaxed — Sunday is a leg day.'
     default:
       return null
   }
@@ -77,11 +81,11 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
     tags.push('high-tension core')
   }
 
-  if (dayName === 'Wednesday' && name.includes('hamstring curl')) {
+  if (dayName === 'Sunday' && name.includes('hamstring curl')) {
     tags.push('posterior chain priority')
   }
 
-  if (dayName === 'Wednesday' && (name.includes('glute bridge') || name.includes('abductor machine'))) {
+  if (dayName === 'Sunday' && (name.includes('glute bridge') || name.includes('abductor machine'))) {
     tags.push('glute support')
   }
 
@@ -115,6 +119,9 @@ const weekdayOptions = [
   { day: 4, label: 'Thu' },
   { day: 5, label: 'Fri' },
 ]
+
+// Weekend days are fixed (not part of the drag-to-reorder grid).
+const accordionDays = [...weekdayOptions, { day: 6, label: 'Sat' }, { day: 0, label: 'Sun' }]
 
 function SortableWorkoutCard({
   id,
@@ -163,8 +170,7 @@ function SortableWorkoutCard({
 export default function PlanPage() {
   const weekPlan = useMemo(() => getWeekPlan(), [])
   const [selectedDay, setSelectedDay] = useState<number>(() => {
-    const today = new Date().getDay()
-    return today >= 1 && today <= 5 ? today : 1
+    return new Date().getDay()
   })
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
   const [cardioPreference, setCardioPreference] = useState<string | null>(null)
@@ -306,11 +312,13 @@ export default function PlanPage() {
         <p className="text-center text-[10px] text-slate-600">Drag to reorder · tap to expand</p>
       </section>
 
-      {/* Week overview accordion — all 5 days visible */}
+      {/* Week overview accordion — all 7 days visible */}
       <div className="space-y-2">
-        {weekdayOptions.map(({ day, label }, index) => {
-          const workoutDay = slotOrder[index]
-          const baseWorkout = weekPlan.find((item) => item.day === workoutDay)?.workout ?? weekPlan[0].workout
+        {accordionDays.map(({ day, label }, index) => {
+          const workoutDay = index < weekdayOptions.length ? slotOrder[index] : day
+          const baseWorkout =
+            weekPlan.find((item) => item.day === workoutDay)?.workout ??
+            weekPlan.find((item) => item.day === 1)!.workout
           const isReordered = workoutDay !== day
           const isExpanded = selectedDay === day
           const emphasis = getDayEmphasis(baseWorkout.dayName)
@@ -361,7 +369,9 @@ export default function PlanPage() {
                       {displayWorkout.focus}
                     </div>
                     <div className="mt-0.5 text-[11px] text-slate-500">
-                      {displayWorkout.exercises.length} exercises · {displayWorkout.estimatedMinutes}
+                      {displayWorkout.kind === 'run'
+                        ? displayWorkout.estimatedMinutes
+                        : `${displayWorkout.exercises.length} exercises · ${displayWorkout.estimatedMinutes}`}
                     </div>
                   </div>
                 </div>
@@ -422,7 +432,33 @@ export default function PlanPage() {
                     <p className="text-sm text-slate-300">{displayWorkout.warmup}</p>
                   </div>
 
+                  {/* Run plan */}
+                  {displayWorkout.kind === 'run' && displayWorkout.run ? (
+                    <div>
+                      <div className="label mb-2">Run</div>
+                      <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
+                        <li>{displayWorkout.run.warmupWalkMinutes} min brisk walk</li>
+                        <li>
+                          {displayWorkout.run.walkMinutes > 0
+                            ? `${displayWorkout.run.rounds} × (${displayWorkout.run.jogMinutes} min easy jog + ${displayWorkout.run.walkMinutes} min walk)`
+                            : `${displayWorkout.run.rounds * displayWorkout.run.jogMinutes} min continuous easy jog`}
+                        </li>
+                        <li>{displayWorkout.run.cooldownWalkMinutes} min easy walk</li>
+                      </ol>
+                      {(() => {
+                        const add = coachingOverrides?.cardio_add_minutes?.[displayWorkout.dayName]
+                        if (!add) return null
+                        return (
+                          <p className="mt-1 text-xs font-semibold text-emerald-400">
+                            + {add} min coaching plan adjustment
+                          </p>
+                        )
+                      })()}
+                    </div>
+                  ) : null}
+
                   {/* Exercise list */}
+                  {displayWorkout.exercises.length ? (
                   <div>
                     <div className="label mb-2">Exercises</div>
                     <div className="space-y-2">
@@ -468,8 +504,18 @@ export default function PlanPage() {
                       })}
                     </div>
                   </div>
+                  ) : null}
+
+                  {/* Mobility */}
+                  {displayWorkout.mobility ? (
+                    <div>
+                      <div className="label mb-1.5">Mobility finish</div>
+                      <p className="text-sm text-slate-300">{displayWorkout.mobility}</p>
+                    </div>
+                  ) : null}
 
                   {/* Cardio */}
+                  {displayWorkout.kind !== 'run' ? (
                   <div>
                     <div className="label mb-1.5">Cardio</div>
                     <p className="text-sm text-slate-300">
@@ -485,6 +531,7 @@ export default function PlanPage() {
                       )
                     })()}
                   </div>
+                  ) : null}
 
                   {/* Friday governor summary */}
                   {baseWorkout.dayName === 'Friday' ? (

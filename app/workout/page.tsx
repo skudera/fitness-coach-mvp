@@ -100,30 +100,40 @@ function NumberInput({
 
 function getDayEmphasis(dayName: string) {
   switch (dayName) {
-    case 'Monday':
-      return {
-        title: "Today's emphasis",
-        body: 'Machine pressing only - right shoulder loading stays conservative. Face pulls and dead-bugs are the priority, not the finisher. Treat posture work as the most important thing you do today.',
-      }
-    case 'Tuesday':
-      return {
-        title: "Today's emphasis",
-        body: 'Pulling emphasis is your best friend right now - builds the upper back strength that corrects rounded shoulders. Scapula squeeze on every row, high reps on rear delts and face pulls.',
-      }
-    case 'Wednesday':
+    case 'Sunday':
       return {
         title: "Today's emphasis",
         body: 'Hamstring and glute bias directly addresses anterior pelvic tilt. Posterior chain strength pulls your pelvis into neutral over time. Own the eccentric on leg press.',
       }
+    case 'Monday':
+      return {
+        title: "Today's emphasis",
+        body: 'Pressing is coming back after surgery: start light, stay pain-free, and let load follow clean reps. Face pulls and wall push-up plus are the priority, not the finisher.',
+      }
+    case 'Tuesday':
+      return {
+        title: "Today's emphasis",
+        body: 'Pulling emphasis builds the upper back strength that corrects rounded shoulders. Scapula squeeze on every row, high reps on rear delts and face pulls.',
+      }
+    case 'Wednesday':
+      return {
+        title: "Today's emphasis",
+        body: 'Easy run before work. Conversational pace, no pace goal, then a short mobility block.',
+      }
     case 'Thursday':
       return {
         title: "Today's emphasis",
-        body: 'Lateral raises stay strict and light. No overhead pressing - shoulder work is purely corrective and isolation-based today.',
+        body: 'Corrective shoulder day. Lateral raises stay strict, I-Y-T raises stay very light, and the shoulder press is a gentle reintroduction — stop short of any pinch.',
       }
     case 'Friday':
       return {
         title: "Today's emphasis",
-        body: 'Lower body second hit of the week with arm volume added. Friday governor still applies based on energy and PT schedule.',
+        body: 'Lower body second hit of the week with arm volume added. Friday governor still applies based on energy and recovery.',
+      }
+    case 'Saturday':
+      return {
+        title: "Today's emphasis",
+        body: 'Easy outdoor run. Keep it relaxed — Sunday is a leg day.',
       }
     default:
       return null
@@ -156,11 +166,11 @@ function getExerciseCoachingTags(dayName: string, exerciseName: string) {
     tags.push('posture priority')
   }
 
-  if (dayName === 'Wednesday' && name.includes('hamstring curl')) {
+  if (dayName === 'Sunday' && name.includes('hamstring curl')) {
     tags.push('posterior chain priority')
   }
 
-  if (dayName === 'Wednesday' && (name.includes('glute bridge') || name.includes('hip thrust'))) {
+  if (dayName === 'Sunday' && (name.includes('glute bridge') || name.includes('hip thrust'))) {
     tags.push('glute activation')
   }
 
@@ -784,6 +794,23 @@ export default function WorkoutPage() {
         <p className="text-slate-100">{effectiveWorkout.warmup}</p>
       </section>
 
+      {effectiveWorkout.kind === 'run' && effectiveWorkout.run ? (
+        <section className="card space-y-3">
+          <div className="label">Today&apos;s run</div>
+          <ol className="list-decimal space-y-2 pl-5 text-slate-100">
+            <li>{effectiveWorkout.run.warmupWalkMinutes} min brisk walk</li>
+            <li>
+              {effectiveWorkout.run.walkMinutes > 0
+                ? `${effectiveWorkout.run.rounds} × (${effectiveWorkout.run.jogMinutes} min easy jog + ${effectiveWorkout.run.walkMinutes} min walk)`
+                : `${effectiveWorkout.run.rounds * effectiveWorkout.run.jogMinutes} min continuous easy jog`}
+            </li>
+            <li>{effectiveWorkout.run.cooldownWalkMinutes} min easy walk</li>
+          </ol>
+          <p className="text-sm leading-6 text-slate-300">{effectiveWorkout.run.guidance}</p>
+        </section>
+      ) : null}
+
+      {effectiveWorkout.exercises.length ? (
       <section className="card space-y-4">
         <div className="label">Today&apos;s exercises</div>
         <div className="space-y-3">
@@ -820,6 +847,14 @@ export default function WorkoutPage() {
           })}
         </div>
       </section>
+      ) : null}
+
+      {effectiveWorkout.mobility ? (
+        <section className="card space-y-2">
+          <div className="label">Mobility finish</div>
+          <p className="text-slate-100">{effectiveWorkout.mobility}</p>
+        </section>
+      ) : null}
 
       {fridayOutput === 'home_anti_office' ? (
         <section className="card space-y-4">
@@ -883,18 +918,22 @@ export default function WorkoutPage() {
         </section>
       ) : null}
 
-      <section className="card space-y-4">
-        <div className="label">Cardio</div>
-        <p className="text-slate-100">{applyCardioPreference(effectiveWorkout.cardio, cardioPreference)}</p>
-      </section>
+      {effectiveWorkout.kind !== 'run' ? (
+        <>
+          <section className="card space-y-4">
+            <div className="label">Cardio</div>
+            <p className="text-slate-100">{applyCardioPreference(effectiveWorkout.cardio, cardioPreference)}</p>
+          </section>
 
-      <section className="card space-y-4">
-        <div className="label">Progression rule</div>
-        <p className="text-sm leading-6 text-slate-300">
-          Progression should stay form-first. Clean reps earn normal progression. Slight
-          breakdown should hold the load. Clear breakdown should reduce the load next time.
-        </p>
-      </section>
+          <section className="card space-y-4">
+            <div className="label">Progression rule</div>
+            <p className="text-sm leading-6 text-slate-300">
+              Progression should stay form-first. Clean reps earn normal progression. Slight
+              breakdown should hold the load. Clear breakdown should reduce the load next time.
+            </p>
+          </section>
+        </>
+      ) : null}
 
       {!loaded ? null : completedToday ? (
         <Link
@@ -912,10 +951,14 @@ export default function WorkoutPage() {
         </Link>
       ) : canStartFridayWorkout ? (
         <Link
-          href="/workout/log"
+          href={effectiveWorkout.kind === 'run' ? '/workout/run' : '/workout/log'}
           className="block w-full rounded-[1.75rem] bg-emerald-500 px-5 py-5 text-center text-[1rem] font-semibold text-slate-900 transition hover:bg-emerald-400"
         >
-          {hasInProgressWorkout ? 'Resume Workout' : 'Start Workout'}
+          {effectiveWorkout.kind === 'run'
+            ? 'Log Run'
+            : hasInProgressWorkout
+              ? 'Resume Workout'
+              : 'Start Workout'}
         </Link>
       ) : fridayOutput === 'full_rest' || fridayOutput === 'walk_only' ? (
         <div className="space-y-3">

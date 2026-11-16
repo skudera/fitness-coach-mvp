@@ -43,6 +43,7 @@ app/
   workout/
     page.tsx                  # Workout start / day selection
     log/page.tsx              # Active workout logging (primary workout UI)
+    run/page.tsx              # Run-day logger (minutes, miles, effort) — saved as a workout with workout_json.type = 'run'
     warmup/page.tsx
     exercise/[index]/page.tsx # Legacy per-exercise page (old storage system)
     cardio/page.tsx
@@ -213,6 +214,16 @@ InBody data is **intentionally separate** from `body_metrics` — clinic machine
 5. Plan page accordion — priority exercises get green border + "priority" badge; cardio shows "+ N min" note
 6. Workout log — `suggestedCardioMinutes` includes coaching addition; labeled "incl. +N min coaching plan"
 7. Overrides persist until user taps **Update** (new analysis) or **Clear**
+
+## Weekly Schedule (post-surgery return plan)
+
+Templates in `lib/workout-data.ts` are keyed by `getDay()` (0 = Sunday): Sun Legs/Glutes/Core, Mon Chest/Shoulders/Biceps, Tue Back/Rear Delts/Core, **Wed easy run**, Thu Triceps/Shoulders (corrective)/Core, Fri Legs/Arms, **Sat easy run**. Lifting sessions target ~60 min with a `mobility` finish block. Run days set `kind: 'run'` and a `run` plan (`RunPlan`); they route to `/workout/run` instead of `/workout/log`.
+
+- Exercise targets can be `bodyweight: true` (no weight input in the logger) and set counts come from `getTargetForExercise`, not a fixed 3.
+- `PROGRESSION_FRESH_START` (`lib/progression-engine.ts`) — logs created before this date are ignored for weight suggestions. Pre-surgery history overstates strength. Move or remove it once progression has rebuilt.
+- Home streak no longer forgives weekends (Sat/Sun are scheduled); only governor rest days bridge gaps.
+- The Friday governor's `regular` output reuses `getWorkoutForDay(5)`. Basketball is paused for now.
+- Coaching `cardio_add_minutes` is keyed by day name. On run days it extends the run; on lifting days it extends the optional walk.
 
 ## Weekly Day Reordering
 

@@ -104,19 +104,19 @@ export function getLocalDateString(date = new Date()) {
 export function getWorkoutLabelForDay(day: number) {
   switch (day) {
     case 0:
-      return 'Sunday: Recovery / Mobility'
+      return 'Sunday: Legs / Glutes / Core'
     case 1:
-      return 'Monday: Chest / Shoulders / Cardio'
+      return 'Monday: Chest / Shoulders / Biceps'
     case 2:
-      return 'Tuesday: Back / Core / Cardio'
+      return 'Tuesday: Back / Rear Delts / Core'
     case 3:
-      return 'Wednesday: Legs / Core / Cardio'
+      return 'Wednesday: Easy Run'
     case 4:
-      return 'Thursday: Upper Mixed / Basketball'
+      return 'Thursday: Triceps / Shoulders / Core'
     case 5:
-      return 'Friday: Lower / Conditioning'
+      return 'Friday: Legs / Arms / Conditioning'
     case 6:
-      return 'Saturday: Optional Recovery / Mobility'
+      return 'Saturday: Easy Run'
     default:
       return 'Next workout'
   }
@@ -282,6 +282,8 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
   completed_cardio?: boolean
   exercise_order?: string[]
   exercise_logs: ExerciseSetLog[]
+  /** Extra fields merged into workout_json (e.g. run distance and effort). */
+  workout_extra?: Record<string, unknown>
 }) {
   const userId = await requireUserId()
 
@@ -310,6 +312,7 @@ export async function saveWorkoutAndLogsToSupabase(payload: {
           strength_minutes: payload.strength_minutes ?? null,
           cardio_minutes: payload.cardio_minutes ?? null,
           total_minutes: payload.actual_minutes ?? null,
+          ...(payload.workout_extra ?? {}),
         },
       },
     ])
