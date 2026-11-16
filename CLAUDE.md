@@ -192,6 +192,10 @@ Friday workout is adjusted based on basketball inputs collected in `weekly_setti
 
 **Noise filter**: ECW/TBW >0.41 suppresses fat_loss_stall (water retention masking true loss).
 
+**Recency gating** (`generateCoachingReport`): metrics, workouts, and logs older than 8 weeks are ignored (`RECENT_WEEKS`), and InBody scans older than 16 weeks (`INBODY_FRESH_WEEKS`) are dropped in favor of a `stale_inbody` info finding. If there isn't enough recent data, the report sets `staleDataNote` and the Home card tells you to do a fresh check-in. This keeps a long break from producing advice off old numbers.
+
+**Cardio overrides map to the 7-day schedule**: stall tiers and the visceral-fat rule add minutes to the Wednesday and Saturday runs (and Mon/Fri easy walks at tiers 2–3).
+
 ### Weekly Plan Engine (`lib/weekly-plan-engine.ts`)
 `buildCoachingOverrides(findings)` converts `CoachingFinding[]` into `CoachingOverrides` with:
 - `cardio_add_minutes` — per day-name additions (applied in workout log to suggested cardio)

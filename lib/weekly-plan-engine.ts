@@ -42,32 +42,34 @@ export function buildCoachingOverrides(
       case 'fat_loss_stall': {
         const tier = finding.tier ?? 1
         if (tier === 1) {
-          cardioAdd['Monday'] = (cardioAdd['Monday'] ?? 0) + 5
           cardioAdd['Wednesday'] = (cardioAdd['Wednesday'] ?? 0) + 5
+          cardioAdd['Saturday'] = (cardioAdd['Saturday'] ?? 0) + 5
           decisions.push({
             type: finding.type,
             title: finding.title,
-            change: 'Cardio +5 min on Monday and Wednesday',
+            change: 'Run +5 min on Wednesday and Saturday',
             reason: 'Weight and body fat flat for ~4 weeks',
           })
         } else if (tier === 2) {
-          cardioAdd['Monday'] = (cardioAdd['Monday'] ?? 0) + 10
           cardioAdd['Wednesday'] = (cardioAdd['Wednesday'] ?? 0) + 10
+          cardioAdd['Saturday'] = (cardioAdd['Saturday'] ?? 0) + 10
+          cardioAdd['Monday'] = (cardioAdd['Monday'] ?? 0) + 10
           cardioAdd['Friday'] = (cardioAdd['Friday'] ?? 0) + 10
           decisions.push({
             type: finding.type,
             title: finding.title,
-            change: 'Cardio +10 min on Monday, Wednesday, and Friday',
+            change: 'Run +10 min on Wednesday and Saturday, easy walk +10 min on Monday and Friday',
             reason: 'Weight and body fat flat for ~8 weeks',
           })
         } else {
-          cardioAdd['Monday'] = (cardioAdd['Monday'] ?? 0) + 10
           cardioAdd['Wednesday'] = (cardioAdd['Wednesday'] ?? 0) + 10
+          cardioAdd['Saturday'] = (cardioAdd['Saturday'] ?? 0) + 10
+          cardioAdd['Monday'] = (cardioAdd['Monday'] ?? 0) + 10
           cardioAdd['Friday'] = (cardioAdd['Friday'] ?? 0) + 10
           decisions.push({
             type: finding.type,
             title: finding.title,
-            change: 'Cardio +10 min on Mon/Wed/Fri and cut 1 accessory per session',
+            change: 'Run +10 min Wed/Sat, walk +10 min Mon/Fri, and cut 1 accessory per session',
             reason: 'Weight and body fat flat for 12+ weeks',
           })
         }
@@ -76,12 +78,12 @@ export function buildCoachingOverrides(
 
       case 'visceral_fat': {
         CORE_EXERCISES.forEach((ex) => priorityExercises.add(ex))
-        cardioAdd['Monday'] = (cardioAdd['Monday'] ?? 0) + 5
         cardioAdd['Wednesday'] = (cardioAdd['Wednesday'] ?? 0) + 5
+        cardioAdd['Saturday'] = (cardioAdd['Saturday'] ?? 0) + 5
         decisions.push({
           type: finding.type,
           title: finding.title,
-          change: 'Core exercises priority + cardio +5 min on Mon and Wed',
+          change: 'Core exercises priority + run +5 min on Wednesday and Saturday',
           reason: 'Visceral fat level elevated — cardio output and core work are the levers',
         })
         break
