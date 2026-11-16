@@ -15,6 +15,7 @@ export type CoachingFinding = {
     | 'leg_lean_deficit'
     | 'ecw_tbw'
     | 'fat_loss_stall'
+    | 'stale_inbody'
   severity: FindingSeverity
   title: string
   body: string
@@ -26,7 +27,14 @@ export type CoachingReport = {
   findings: CoachingFinding[]
   hasEnoughData: boolean
   dataWeeks: number
+  /** Set when the newest check-in is too old for the review to say anything useful. */
+  staleDataNote: string | null
 }
+
+// Weekly rules only look at recent data, so a long gap in tracking can't produce
+// advice based on months-old numbers. InBody scans are rarer, so they get longer.
+const RECENT_WEEKS = 8
+const INBODY_FRESH_WEEKS = 16
 
 function daysBetween(a: string, b: string): number {
   return Math.round(
@@ -404,7 +412,7 @@ function analyzeFatLossStall(
       severity: 'warning',
       tier: 2,
       title: 'Fat loss plateau — Tier 2 response',
-      body: `Weight and body fat have been flat for ~8 weeks. Recommended: add 10 min to cardio on Mon, Wed, and Fri this week. If recovery allows, a light Saturday conditioning session (20 min walk or bike) adds output without stressing the lifting days.${trunkNote}`,
+      body: `Weight and body fat have been flat for ~8 weeks. Recommended: add 10 min to Wednesday's and Saturday's runs and to the Monday and Friday easy walks this week. Keep the runs easy — extra time at a relaxed pace adds output without eating into lifting recovery.${trunkNote}`,
     }
   }
 
@@ -414,7 +422,7 @@ function analyzeFatLossStall(
       severity: 'warning',
       tier: 1,
       title: 'Fat loss plateau — Tier 1 response',
-      body: `Weight and body fat have been flat for ~4 weeks. Recommended: add 5 min to cardio on Mon and Wed this week. One targeted adjustment first — don't escalate before giving this a full week to show an effect.${trunkNote}`,
+      body: `Weight and body fat have been flat for ~4 weeks. Recommended: add 5 min to Wednesday's and Saturday's runs this week. One targeted adjustment first — don't escalate before giving this a full week to show an effect.${trunkNote}`,
     }
   }
 
@@ -478,9 +486,29 @@ export function generateCoachingReport(params: {
   exerciseLogs: ExerciseLogRow[]
   inbodyAssessments: InBodyRow[]
 }): CoachingReport {
-  const { metrics, workouts, exerciseLogs, inbodyAssessments } = params
+  const { inbodyAssessments: allInbody } = params
+
+  const recentCutoff = weeksAgoDate(RECENT_WEEKS)
+  const metrics = params.metrics.filter((m) => m.date >= recentCutoff)
+  const workouts = params.workouts.filter((w) => w.date >= recentCutoff)
+  const recentWorkoutIds = new Set(workouts.map((w) => w.id))
+  const exerciseLogs = params.exerciseLogs.filter((l) => recentWorkoutIds.has(l.workout_id))
+
+  const inbodyCutoff = weeksAgoDate(INBODY_FRESH_WEEKS)
+  const inbodyAssessments = allInbody.filter((a) => a.assessment_date >= inbodyCutoff)
+  const staleInbody = allInbody.length > 0 && inbodyAssessments.length === 0 ? allInbody[0] : null
 
   const hasEnoughData = metrics.length >= 4 || workouts.length >= 8
+
+  const newestMetricDate = params.metrics.length
+    ? params.metrics[params.metrics.length - 1].date
+    : null
+  const staleDataNote =
+    !hasEnoughData && newestMetricDate && newestMetricDate < recentCutoff
+      ? `Your last check-in was ${Math.round(
+          daysBetween(newestMetricDate, new Date().toISOString().slice(0, 10)) / 7
+        )} weeks ago. Do a fresh Monday check-in and keep logging — the review restarts from new data instead of old numbers.`
+      : null
 
   const findings: CoachingFinding[] = [
     analyzeProgressionStalls(exerciseLogs, workouts),
@@ -494,6 +522,14 @@ export function generateCoachingReport(params: {
     analyzeSegmentalImbalance(inbodyAssessments),
     analyzeLegLeanDeficit(inbodyAssessments),
     analyzeEcwTbw(inbodyAssessments),
+    staleInbody
+      ? {
+          type: 'stale_inbody' as const,
+          severity: 'info' as const,
+          title: 'InBody scan is out of date',
+          body: `Your last InBody scan was on ${staleInbody.assessment_date}. Body-composition insights are paused until you add a new scan.`,
+        }
+      : null,
   ].filter((f): f is CoachingFinding => f !== null)
 
   // Sort: action → warning → info
@@ -505,5 +541,5 @@ export function generateCoachingReport(params: {
   const dataWeeks =
     oldest && newest ? Math.round(daysBetween(oldest.date, newest.date) / 7) : 0
 
-  return { findings, hasEnoughData, dataWeeks }
+  return { findings, hasEnoughData, dataWeeks, staleDataNote }
 }

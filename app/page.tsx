@@ -514,7 +514,7 @@ export default function HomePage() {
   )
 
   const coachReport = useMemo(() => {
-    if (loading) return { findings: [], hasEnoughData: false, dataWeeks: 0 }
+    if (loading) return { findings: [], hasEnoughData: false, dataWeeks: 0, staleDataNote: null }
     return generateCoachingReport({ metrics, workouts, exerciseLogs, inbodyAssessments })
   }, [loading, metrics, workouts, exerciseLogs, inbodyAssessments])
 
@@ -720,7 +720,8 @@ export default function HomePage() {
           <p className="text-sm text-slate-400">Analyzing your data…</p>
         ) : !coachReport.hasEnoughData ? (
           <p className="text-sm text-slate-400">
-            Keep logging — the review gets more useful after a few weeks of check-ins and workouts.
+            {coachReport.staleDataNote ??
+              'Keep logging — the review gets more useful after a few weeks of check-ins and workouts.'}
           </p>
         ) : coachReport.findings.length === 0 ? (
           <div className="flex items-start gap-3">
