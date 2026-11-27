@@ -22,6 +22,17 @@ const LEG_COMPOUND_EXERCISES = [
   'Hip Thrust Machine',
 ]
 
+/** Plans saved before this date were built for the previous program. */
+const PROGRAM_START = '2026-11-29'
+
+/** Drops a saved plan that no longer applies. The stored value is left untouched. */
+export function currentCoachingOverrides(
+  overrides: CoachingOverrides | null | undefined
+): CoachingOverrides | null {
+  if (!overrides?.generated_at || overrides.generated_at < PROGRAM_START) return null
+  return overrides
+}
+
 export function buildCoachingOverrides(
   findings: CoachingFinding[]
 ): CoachingOverrides | null {

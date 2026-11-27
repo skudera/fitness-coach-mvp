@@ -139,7 +139,7 @@ JSONB storing the active coaching plan. Shape:
   ]
 }
 ```
-Applied by the user via the Coaching Plan card on the Home page. Persists until the user taps Apply/Update again.
+Applied by the user via the Coaching Plan card on the Home page. Persists until the user taps Apply/Update again. Plans generated before `PROGRAM_START` (`lib/weekly-plan-engine.ts`) are ignored on load.
 
 ## Key Architectural Patterns
 

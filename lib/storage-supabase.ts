@@ -1,3 +1,4 @@
+import { currentCoachingOverrides } from './weekly-plan-engine'
 import type { ExerciseSettings } from './exercise-settings'
 import { requireUserId, supabase } from './supabase'
 import type { CoachingOverrides } from './weekly-plan-engine'
@@ -896,7 +897,7 @@ export async function loadCoachingOverrides(): Promise<CoachingOverrides | null>
     return null
   }
 
-  return (data?.coaching_overrides as CoachingOverrides | null) ?? null
+  return currentCoachingOverrides(data?.coaching_overrides as CoachingOverrides | null)
 }
 
 export async function loadExerciseSettings(): Promise<ExerciseSettings> {
