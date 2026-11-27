@@ -14,18 +14,12 @@ export type CoachingOverrides = {
   decisions: CoachingDecision[]
 }
 
-const CORE_EXERCISES = [
-  'Dead-Bug',
-  'Ab Wheel or Dead-Bug',
-  'Weighted Cable Crunch',
-  'Ab Machine',
-  "Captain's Chair Leg Raise",
-]
+const CORE_EXERCISES = ['Dead-Bug', 'Cable Pallof Press', 'Bird Dog']
 
 const LEG_COMPOUND_EXERCISES = [
   'Seated Hamstring Curl',
   'Leg Press (45° Plate Loaded)',
-  'Hack Squat',
+  'Hip Thrust Machine',
 ]
 
 export function buildCoachingOverrides(

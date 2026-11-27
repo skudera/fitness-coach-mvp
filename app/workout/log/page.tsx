@@ -6,6 +6,7 @@ import {
   getWorkoutForDay,
   getTargetForExercise,
   getExerciseSubstitutions,
+  PT_CLEARANCE_EXERCISES,
   getExerciseHistoryAliases,
   applyCardioPreference,
   type WorkoutDefinition,
@@ -22,6 +23,9 @@ import {
   getWeeklySettings,
   saveWorkoutAndLogsToSupabase,
   loadExerciseLogHistoryFromSupabase,
+  loadExerciseSettings,
+  loadPainLogsFromSupabase,
+  saveExerciseSettings,
   loadEquipmentPreferences,
   loadCoachingOverrides,
   type ExerciseLogRow,
@@ -35,7 +39,14 @@ import {
   type WorkoutExerciseEntry,
   type WorkoutProgressState,
 } from '@/lib/workout-log-state'
-import { getMachineAwareSuggestion, PROGRESSION_FRESH_START } from '@/lib/progression-engine'
+import {
+  BASELINE_WEEK_END,
+  getMachineAwareSuggestion,
+  isWorseThan,
+  parsePainSeverity,
+  PROGRESSION_FRESH_START,
+} from '@/lib/progression-engine'
+import { applyExerciseSettings, type ExerciseSettings } from '@/lib/exercise-settings'
 
 type RecoveryFlowConfig = {
   isRecovery: boolean
@@ -51,12 +62,16 @@ function createBlankSets(count = 3) {
   return Array.from({ length: count }, () => ({ weight: '', reps: '' }))
 }
 
-function buildInitialEntries(exercises: string[], fixedSetCount?: number): WorkoutExerciseEntry[] {
-  return exercises.map((name) => ({
+function buildInitialEntries(
+  workout: WorkoutDefinition,
+  fixedSetCount?: number
+): WorkoutExerciseEntry[] {
+  return workout.exercises.map((name) => ({
     name,
     substitutedFrom: null,
-    sets: createBlankSets(fixedSetCount ?? getTargetForExercise(name).sets),
+    sets: createBlankSets(fixedSetCount ?? getTargetForExercise(name, workout).sets),
     difficulty: '',
+    effort: '',
     discomfortLocation: 'None',
     discomfortSeverity: '',
     note: '',
@@ -84,18 +99,20 @@ function parseFirstNumber(value: string) {
   return match ? Number(match[0]) : 0
 }
 
-function getResolvedThursdayCardio(status: string) {
-  if (status === 'yes') return 'Skip cardio if basketball happens'
-  if (status === 'no') return 'Elliptical – 10 min'
-  return 'Cardio optional depending on basketball'
-}
-
 function getLatestPerformance(logs: ExerciseLogRow[], aliases: string[]) {
   const aliasSet = new Set(aliases)
   const freshStartMs = new Date(PROGRESSION_FRESH_START).getTime()
-  const relevant = [...logs]
+  const candidates = logs
     .filter((log) => aliasSet.has(log.exercise_name))
     .filter((log) => new Date(log.created_at ?? 0).getTime() >= freshStartMs)
+  // Skipped exercises are saved as blank rows; they must not replace real history.
+  const performed = new Set(
+    candidates
+      .filter((log) => (log.reps ?? 0) > 0 || log.discomfort)
+      .map((log) => log.workout_id)
+  )
+  const relevant = candidates
+    .filter((log) => performed.has(log.workout_id))
     .sort((a, b) => {
       const aTime = new Date(a.created_at ?? 0).getTime()
       const bTime = new Date(b.created_at ?? 0).getTime()
@@ -109,19 +126,67 @@ function getLatestPerformance(logs: ExerciseLogRow[], aliases: string[]) {
     (log) => log.workout_id === latest.workout_id && log.exercise_name === latest.exercise_name
   )
 
-  const weightedSets = latestGroup.filter((log) => (log.weight ?? 0) > 0)
-  if (!weightedSets.length) return null
-
-  const topWeight = Math.max(...weightedSets.map((log) => log.weight ?? 0))
-  const setsAtTopWeight = weightedSets.filter((log) => (log.weight ?? 0) === topWeight)
-  const topReps = Math.max(...setsAtTopWeight.map((log) => log.reps ?? 0))
-  const lastDifficulty = latestGroup.find((log) => log.difficulty)?.difficulty ?? null
+  const sets = [...latestGroup]
+    .sort((a, b) => a.set_number - b.set_number)
+    .map((log) => ({ weight: log.weight ?? null, reps: log.reps ?? null }))
+  const weightedSets = sets.filter((set) => (set.weight ?? 0) > 0)
+  const topWeight = Math.max(0, ...weightedSets.map((set) => set.weight ?? 0))
+  const topReps = Math.max(
+    0,
+    ...weightedSets.filter((set) => set.weight === topWeight).map((set) => set.reps ?? 0)
+  )
 
   return {
+    sets,
     topWeight,
     topReps,
-    lastDifficulty,
+    lastDifficulty: latestGroup.find((log) => log.difficulty)?.difficulty ?? null,
+    lastEffort: latest.effort ?? null,
   }
+}
+
+/**
+ * Pain is never reset by date. Severe pain blocks until cleared; other discomfort
+ * stays active until a later session of the exercise is performed without it.
+ */
+function getPainState(
+  history: ExerciseLogRow[],
+  painLogs: ExerciseLogRow[],
+  aliases: string[],
+  clearedAt?: string | null
+) {
+  const time = (value?: string | null) => new Date(value ?? 0).getTime()
+  const painful = painLogs
+    .filter((log) => aliases.includes(log.exercise_name) && parsePainSeverity(log.discomfort))
+    .sort((a, b) => time(b.created_at) - time(a.created_at))
+  const latest = painful[0]
+  const resolved =
+    latest &&
+    history.some(
+      (log) =>
+        aliases.includes(log.exercise_name) &&
+        (log.reps ?? 0) > 0 &&
+        time(log.created_at) > time(latest.created_at)
+    )
+  const active = latest && !resolved ? latest : null
+
+  return {
+    reviewRequired: painful.some(
+      (log) =>
+        parsePainSeverity(log.discomfort) === 'Severe' && time(log.created_at) > time(clearedAt)
+    ),
+    discomfort: active?.discomfort ?? null,
+    cleared: Boolean(active && time(clearedAt) > time(active.created_at)),
+  }
+}
+
+function formatDiscomfort(entry: WorkoutExerciseEntry, previous: string | null | undefined) {
+  if (entry.discomfortLocation === 'None') return null
+  const text = `${entry.discomfortLocation}${
+    entry.discomfortSeverity ? ` - ${entry.discomfortSeverity}` : ''
+  }`
+  const worse = isWorseThan(parsePainSeverity(text), parsePainSeverity(previous))
+  return worse && parsePainSeverity(text) !== 'Severe' ? `${text} (worsening)` : text
 }
 
 function getSuggestedCardioMinutes(
@@ -239,10 +304,12 @@ function getRecoveryFlowConfig(workout: WorkoutDefinition): RecoveryFlowConfig {
 }
 
 function entryHasAnyData(entry: WorkoutExerciseEntry) {
-  const hasSetData = entry.sets.some((set) => set.weight.trim() || set.reps.trim())
+  // Weights are pre-filled, so only reps show that a set was actually done.
+  const hasSetData = entry.sets.some((set) => set.reps.trim())
   return (
     hasSetData ||
     Boolean(entry.difficulty) ||
+    Boolean(entry.effort) ||
     Boolean(entry.note.trim()) ||
     entry.discomfortLocation !== 'None' ||
     Boolean(entry.discomfortSeverity)
@@ -308,8 +375,9 @@ function getFormQualityHint(value: string) {
 }
 
 const formQualityOptions = ['Clean', 'Slight Breakdown', 'Breakdown']
-const discomfortLocationOptions = ['None', 'Shoulder', 'Back', 'Other']
-const discomfortSeverityOptions = ['Low', 'Medium', 'High']
+const effortOptions = ['Easy', 'Moderate', 'Hard', 'Very Hard']
+const discomfortLocationOptions = ['None', 'Shoulder', 'Back', 'Knee', 'Elbow', 'Other']
+const discomfortSeverityOptions = ['Mild', 'Moderate', 'Severe', 'Sharp / radiating / worsening']
 const partialFinishReasons = ['Ran out of time', 'Low energy', 'Discomfort', 'Other']
 
 export default function WorkoutLogPage() {
@@ -327,14 +395,20 @@ export default function WorkoutLogPage() {
     [resolvedWorkoutDay]
   )
 
-  const { workout } = useMemo(
+  const [exerciseSettings, setExerciseSettings] = useState<ExerciseSettings>({})
+  const [confirmClearance, setConfirmClearance] = useState('')
+
+  const workout = useMemo(
     () =>
-      getEffectiveWorkoutForLog({
-        baseWorkout,
-        weeklySettings,
-        cardioPreference,
-      }),
-    [baseWorkout, weeklySettings, cardioPreference]
+      applyExerciseSettings(
+        getEffectiveWorkoutForLog({
+          baseWorkout,
+          weeklySettings,
+          cardioPreference,
+        }).workout,
+        exerciseSettings
+      ),
+    [baseWorkout, weeklySettings, cardioPreference, exerciseSettings]
   )
 
   const recoveryConfig = useMemo(() => getRecoveryFlowConfig(workout), [workout])
@@ -344,7 +418,7 @@ export default function WorkoutLogPage() {
   const [strengthEndedAt, setStrengthEndedAt] = useState('')
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [entries, setEntries] = useState<WorkoutExerciseEntry[]>(() =>
-    buildInitialEntries(baseWorkout.exercises)
+    buildInitialEntries(baseWorkout)
   )
   const [currentIndex, setCurrentIndex] = useState(-1)
   const [completedCardio, setCompletedCardio] = useState(true)
@@ -358,6 +432,7 @@ export default function WorkoutLogPage() {
   const [skipLock, setSkipLock] = useState(false)
   const [basketballStatus, setBasketballStatus] = useState('unsure')
   const [historyLogs, setHistoryLogs] = useState<ExerciseLogRow[]>([])
+  const [painLogs, setPainLogs] = useState<ExerciseLogRow[]>([])
   const [usedSavedProgress, setUsedSavedProgress] = useState(false)
 
   const [showPartialFinish, setShowPartialFinish] = useState(false)
@@ -365,17 +440,19 @@ export default function WorkoutLogPage() {
   const [partialNote, setPartialNote] = useState('')
 
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null)
-  const prefilledIndicesRef = useRef<Set<number>>(new Set())
+  const prefilledRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     async function load() {
       try {
         const weekStart = getWeekStartDate()
-        const [weekly, prefs, overrides] = await Promise.all([
+        const [weekly, prefs, overrides, settings] = await Promise.all([
           getWeeklySettings(weekStart),
           loadEquipmentPreferences(),
           loadCoachingOverrides(),
+          loadExerciseSettings(),
         ])
+        setExerciseSettings(settings)
 
         setWeeklySettings(weekly ?? null)
         setBasketballStatus(weekly?.basketball_status ?? 'unsure')
@@ -401,10 +478,23 @@ export default function WorkoutLogPage() {
           setCompletedIndices(saved.completedIndices)
           setUsedSavedProgress(true)
         } else {
+          // Build from the workout actually shown, which on Friday depends on the
+          // recovery check.
+          const shown = applyExerciseSettings(
+            getEffectiveWorkoutForLog({
+              baseWorkout: effectiveBaseWorkout,
+              weeklySettings: weekly ?? null,
+              cardioPreference: prefs?.cardio_preference ?? null,
+            }).workout,
+            settings
+          )
           setStartedAt(new Date().toISOString())
-          setEntries(buildInitialEntries(effectiveBaseWorkout.exercises))
+          setEntries(
+            buildInitialEntries(shown, getRecoveryFlowConfig(shown).isRecovery ? 1 : undefined)
+          )
           setCurrentIndex(-1)
-          setCompletedCardio(true)
+          // Optional cardio only counts if you say you did it.
+          setCompletedCardio(!/optional|none planned/i.test(shown.cardio))
           setCardioMinutes('')
           setSkippedIndices([])
           setCompletedIndices([])
@@ -433,7 +523,7 @@ export default function WorkoutLogPage() {
     const expectedNames = workout.exercises.join('|')
 
     if (currentNames !== expectedNames) {
-      setEntries(buildInitialEntries(workout.exercises, isRecoveryMode ? 1 : undefined))
+      setEntries(buildInitialEntries(workout, isRecoveryMode ? 1 : undefined))
     }
   }, [
     isLoaded,
@@ -478,11 +568,16 @@ export default function WorkoutLogPage() {
     async function loadHistory() {
       if (!historyAliasPool.length) {
         setHistoryLogs([])
+        setPainLogs([])
         return
       }
 
-      const logs = await loadExerciseLogHistoryFromSupabase(historyAliasPool)
+      const [logs, pain] = await Promise.all([
+        loadExerciseLogHistoryFromSupabase(historyAliasPool),
+        loadPainLogsFromSupabase(historyAliasPool),
+      ])
       setHistoryLogs(logs)
+      setPainLogs(pain)
     }
 
     loadHistory()
@@ -531,7 +626,7 @@ export default function WorkoutLogPage() {
 
   const currentEntry = currentIndex >= 0 ? entries[currentIndex] : null
   const currentTarget =
-    currentEntry && !isRecoveryMode ? getTargetForExercise(currentEntry.name) : null
+    currentEntry && !isRecoveryMode ? getTargetForExercise(currentEntry.name, workout) : null
 
   const nextPendingIndex = useMemo(() => {
     return getNextPendingIndex(currentIndex, entries.length, completedIndices)
@@ -577,12 +672,8 @@ export default function WorkoutLogPage() {
   }, [startedAt, strengthEndedAt, nowMs])
 
   const resolvedCardioText = useMemo(() => {
-    const base =
-      workout.dayName === 'Thursday'
-        ? getResolvedThursdayCardio(basketballStatus)
-        : workout.cardio
-    return applyCardioPreference(base, cardioPreference)
-  }, [workout.dayName, workout.cardio, basketballStatus, cardioPreference])
+    return applyCardioPreference(workout.cardio, cardioPreference)
+  }, [workout.cardio, cardioPreference])
 
   const plannedCardioMinutes = useMemo(() => {
     return parseFirstNumber(resolvedCardioText)
@@ -632,7 +723,11 @@ export default function WorkoutLogPage() {
 
   const substitutionOptions =
     currentEntry && !isRecoveryMode
-      ? getExerciseSubstitutions(currentEntry.name).filter((option) => option !== currentEntry.name)
+      ? getExerciseSubstitutions(currentEntry.name).filter(
+          (option) =>
+            // One entry per exercise, or two sets of logs would merge in history.
+            !entries.some((entry) => entry.name === option) && !exerciseSettings[option]?.disabled
+        )
       : []
 
   const exerciseSuggestion = useMemo(() => {
@@ -641,25 +736,39 @@ export default function WorkoutLogPage() {
     const aliases = getExerciseHistoryAliases(currentEntry.name)
     const latest = getLatestPerformance(historyLogs, aliases)
 
-    if (!latest || !latest.topWeight) return null
+    const pain = getPainState(
+      historyLogs,
+      painLogs,
+      aliases,
+      exerciseSettings[currentEntry.name]?.painReviewedAt
+    )
+
+    if (!latest && !pain.reviewRequired && !pain.discomfort) return null
 
     const suggestion = getMachineAwareSuggestion({
       exerciseName: currentEntry.name,
       targetRepRange: currentTarget.reps,
-      topWeight: latest.topWeight,
-      topReps: latest.topReps,
-      lastDifficulty: latest.lastDifficulty,
+      setCount: currentEntry.sets.length,
+      lastSets: latest?.sets ?? [],
+      lastDifficulty: latest?.lastDifficulty ?? null,
+      lastEffort: latest?.lastEffort ?? null,
+      lastPain: parsePainSeverity(pain.discomfort),
+      reviewRequired: pain.reviewRequired,
+      painReviewed: pain.cleared,
+      baselineWeek: date <= BASELINE_WEEK_END,
     })
+    if (!suggestion) return null
 
     return { suggestion, latest }
-  }, [currentEntry, currentTarget, historyLogs, isRecoveryMode])
+  }, [currentEntry, currentTarget, historyLogs, painLogs, exerciseSettings, isRecoveryMode, date])
 
   const suggestion = exerciseSuggestion?.suggestion ?? null
   const latestPerf = exerciseSuggestion?.latest ?? null
 
   useEffect(() => {
     if (currentIndex < 0 || isRecoveryMode) return
-    if (prefilledIndicesRef.current.has(currentIndex)) return
+    const prefillKey = `${currentIndex}:${entries[currentIndex]?.name}`
+    if (prefilledRef.current.has(prefillKey)) return
     if (!suggestion?.setWeights?.length) return
 
     setEntries((prev) => {
@@ -668,11 +777,11 @@ export default function WorkoutLogPage() {
 
       const alreadyHasWeights = entry.sets.some((s) => s.weight.trim() !== '')
       if (alreadyHasWeights) {
-        prefilledIndicesRef.current.add(currentIndex)
+        prefilledRef.current.add(prefillKey)
         return prev
       }
 
-      prefilledIndicesRef.current.add(currentIndex)
+      prefilledRef.current.add(prefillKey)
 
       return prev.map((e, i) => {
         if (i !== currentIndex) return e
@@ -716,7 +825,7 @@ export default function WorkoutLogPage() {
   }
 
   function updateCurrentField(
-    field: 'difficulty' | 'discomfortLocation' | 'discomfortSeverity' | 'note',
+    field: 'difficulty' | 'effort' | 'discomfortLocation' | 'discomfortSeverity' | 'note',
     value: string
   ) {
     if (currentIndex < 0) return
@@ -758,19 +867,57 @@ export default function WorkoutLogPage() {
   function handleSubstitute(newExerciseName: string) {
     if (currentIndex < 0 || isRecoveryMode) return
 
-    setEntries((prev) =>
-      prev.map((entry, index) =>
-        index === currentIndex
-          ? {
-              ...entry,
-              substitutedFrom: entry.substitutedFrom ?? entry.name,
-              name: newExerciseName,
-            }
-          : entry
-      )
-    )
+    const current = entries[currentIndex]
+    const replacement: WorkoutExerciseEntry = {
+      ...buildInitialEntries({ ...workout, exercises: [newExerciseName] })[0],
+      substitutedFrom: current.substitutedFrom ?? current.name,
+    }
+    // Reps, ratings and pain belong to the exercise they were logged on.
+    const hasWork =
+      current.sets.some((set) => set.reps.trim()) ||
+      Boolean(current.difficulty || current.effort || current.note.trim()) ||
+      current.discomfortLocation !== 'None'
 
+    if (hasWork) {
+      const shift = (indices: number[]) =>
+        indices.map((index) => (index > currentIndex ? index + 1 : index))
+
+      setEntries([
+        ...entries.slice(0, currentIndex + 1),
+        replacement,
+        ...entries.slice(currentIndex + 1),
+      ])
+      setCompletedIndices([
+        ...shift(completedIndices).filter((index) => index !== currentIndex),
+        currentIndex,
+      ])
+      setSkippedIndices(shift(skippedIndices).filter((index) => index !== currentIndex))
+      setCurrentIndex(currentIndex + 1)
+    } else {
+      setEntries(entries.map((entry, index) => (index === currentIndex ? replacement : entry)))
+    }
+
+    prefilledRef.current.clear()
     setShowSubstitutions(false)
+  }
+
+  async function handleMarkPainReviewed(exerciseName: string) {
+    const next = {
+      ...exerciseSettings,
+      [exerciseName]: {
+        ...exerciseSettings[exerciseName],
+        painReviewedAt: new Date().toISOString(),
+      },
+    }
+    try {
+      setError('')
+      await saveExerciseSettings(next)
+      setExerciseSettings(next)
+      setConfirmClearance('')
+    } catch (err) {
+      console.error(err)
+      setError('Could not save the review. Please try again.')
+    }
   }
 
   function handleNext() {
@@ -845,11 +992,11 @@ export default function WorkoutLogPage() {
         difficulty: setIndex === entry.sets.length - 1 ? entry.difficulty || null : null,
         discomfort:
           setIndex === entry.sets.length - 1
-            ? entry.discomfortLocation === 'None'
-              ? null
-              : `${entry.discomfortLocation}${
-                  entry.discomfortSeverity ? ` - ${entry.discomfortSeverity}` : ''
-                }`
+            ? formatDiscomfort(
+                entry,
+                getPainState(historyLogs, painLogs, getExerciseHistoryAliases(entry.name))
+                  .discomfort
+              )
             : null,
         notes:
           setIndex === entry.sets.length - 1
@@ -859,6 +1006,12 @@ export default function WorkoutLogPage() {
             : null,
       }))
     })
+  }
+
+  function buildEffortByExercise() {
+    return Object.fromEntries(
+      entries.filter((entry) => entry.effort).map((entry) => [entry.name, entry.effort])
+    )
   }
 
   async function handleFinishWorkout() {
@@ -884,6 +1037,7 @@ export default function WorkoutLogPage() {
         completed_cardio: completedCardio,
         exercise_order: entries.map((entry) => entry.name),
         exercise_logs: buildExerciseLogs(false),
+        workout_extra: { effort_by_exercise: buildEffortByExercise() },
       })
 
       clearWorkoutProgress(date, workout.dayName)
@@ -922,9 +1076,11 @@ export default function WorkoutLogPage() {
         cardio_minutes: safeCardioMinutes,
         warmup_text: workout.warmup,
         cardio_text: resolvedCardioText,
-        completed_cardio: completedCardio,
+        // Ending early with no minutes entered means the cardio didn't happen.
+        completed_cardio: completedCardio && safeCardioMinutes > 0,
         exercise_order: entries.map((entry) => entry.name),
         exercise_logs: buildExerciseLogs(true),
+        workout_extra: { effort_by_exercise: buildEffortByExercise() },
       })
 
       clearWorkoutProgress(date, workout.dayName)
@@ -1017,7 +1173,66 @@ export default function WorkoutLogPage() {
               </p>
             ) : null}
 
-            {latestPerf && suggestion ? (
+            {date <= BASELINE_WEEK_END && !isRecoveryMode ? (
+              <p className="text-xs text-sky-300">
+                Baseline week: pick comfortable weights. Log working sets only, not warm-ups.
+              </p>
+            ) : null}
+
+            {suggestion?.blocked ? (
+              <div className="space-y-2 rounded-xl border border-rose-500/40 bg-rose-950/30 p-3">
+                <p className="text-sm text-rose-200">{suggestion.note}</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSubstitutions(true)}
+                    className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-900"
+                  >
+                    Substitute
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearance(currentEntry.name)}
+                    className="rounded-full bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100"
+                  >
+                    Cleared by PT / provider…
+                  </button>
+                </div>
+                {confirmClearance === currentEntry.name ? (
+                  <div className="space-y-2 rounded-xl border border-slate-600 bg-slate-900 p-3">
+                    <p className="text-sm text-slate-100">
+                      Confirm that your PT or healthcare provider has reviewed{' '}
+                      {currentEntry.name} and cleared you to do it.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleMarkPainReviewed(currentEntry.name)}
+                        className="rounded-full bg-emerald-500 px-3 py-2 text-xs font-semibold text-slate-950"
+                      >
+                        Yes, reviewed and cleared
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmClearance('')}
+                        className="rounded-full bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {error ? <p className="text-xs text-rose-300">{error}</p> : null}
+              </div>
+            ) : null}
+
+            {!latestPerf && suggestion && !suggestion.blocked ? (
+              <p className="rounded-xl border border-amber-500/30 bg-amber-950/30 p-3 text-sm text-amber-200">
+                {suggestion.note}
+              </p>
+            ) : null}
+
+            {latestPerf && suggestion && !suggestion.blocked ? (
               <div className="rounded-xl border border-slate-700/60 bg-slate-900/60 p-3 space-y-1.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[11px] text-slate-500 uppercase tracking-wide">Last session</span>
@@ -1151,6 +1366,11 @@ export default function WorkoutLogPage() {
                     className="block w-full rounded-xl bg-slate-800 px-3 py-2 text-left text-sm font-semibold text-slate-100 hover:bg-slate-700"
                   >
                     {option}
+                    {PT_CLEARANCE_EXERCISES.includes(option) ? (
+                      <span className="ml-2 text-xs font-normal text-amber-300">
+                        only if PT-cleared
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -1230,7 +1450,7 @@ export default function WorkoutLogPage() {
                     className="rounded-2xl border border-slate-700 bg-slate-900/40 p-3"
                   >
                     <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                      Set {setIndex + 1}
+                      Working set {setIndex + 1}
                     </div>
 
                     <div className={`grid gap-2 ${currentTarget?.bodyweight ? 'grid-cols-1' : 'grid-cols-2'}`}>
@@ -1259,6 +1479,26 @@ export default function WorkoutLogPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              <div className="space-y-2">
+                <div className="label">Muscular Effort</div>
+                <div className="flex flex-wrap gap-2">
+                  {effortOptions.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => updateCurrentField('effort', option)}
+                      className={`rounded-full px-3 py-2 text-xs font-semibold ${
+                        currentEntry.effort === option
+                          ? 'bg-emerald-500 text-slate-950'
+                          : 'bg-slate-800 text-slate-200'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -1333,6 +1573,15 @@ export default function WorkoutLogPage() {
                     ))}
                   </div>
                 </div>
+              ) : null}
+
+              {currentEntry.discomfortSeverity &&
+              currentEntry.discomfortSeverity !== 'Mild' ? (
+                <p className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-3 text-sm text-rose-200">
+                  {currentEntry.discomfortSeverity === 'Moderate'
+                    ? 'Stop or substitute this exercise.'
+                    : 'Stop this exercise. Get severe, sharp, radiating or worsening pain reviewed before loading it again.'}
+                </p>
               ) : null}
 
               <div>

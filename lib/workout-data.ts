@@ -23,6 +23,8 @@ export type WorkoutDefinition = {
   run?: RunPlan
   /** Short stretch/mobility block done at the end of the session. */
   mobility?: string
+  /** Per-day set/rep targets that override the exercise defaults. */
+  targets?: Record<string, ExerciseTarget>
 }
 
 export type ExerciseTarget = {
@@ -37,7 +39,7 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
     case 0:
       return {
         dayName: 'Sunday',
-        focus: 'Legs / Glutes / Core',
+        focus: 'Lower Body / Glutes / Core',
         estimatedMinutes: '60 min planned',
         warmup: '5 min easy walk + hip mobility',
         exercises: [
@@ -45,41 +47,61 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
           'Seated Hamstring Curl',
           'Hip Thrust Machine',
           'Leg Extension',
-          'Adductor Machine',
           'Abductor Machine',
-          'Cable Glute Kickback',
+          'Adductor Machine',
           'Rotary Calf',
           'Dead-Bug',
         ],
+        targets: {
+          'Leg Press (45° Plate Loaded)': { sets: 3, reps: '8–12' },
+          'Seated Hamstring Curl': { sets: 3, reps: '10–12' },
+          'Hip Thrust Machine': { sets: 3, reps: '10–15' },
+          'Leg Extension': { sets: 2, reps: '10–12' },
+          'Abductor Machine': { sets: 2, reps: '12–15' },
+          'Adductor Machine': { sets: 2, reps: '12–15' },
+          'Rotary Calf': { sets: 3, reps: '12–15' },
+          'Dead-Bug': { sets: 3, reps: '8/side', bodyweight: true },
+        },
         cardio: 'Optional easy walk – 10 min',
-        mobility: '90/90 hips, hip-flexor stretch, figure-4 stretch',
+        mobility: '90/90 hip rotations, adductor rock-backs, hip-flexor stretch, figure-4',
         restDay: false,
       }
 
     case 1:
       return {
         dayName: 'Monday',
-        focus: 'Chest / Shoulders / Biceps',
+        focus: 'Chest / Triceps / Shoulders',
         estimatedMinutes: '60 min planned',
         warmup: '5 min easy walk + band pull-aparts (2×15)',
         exercises: [
           'Incline Chest Press Machine',
           'Flat Chest Press Machine',
           'Cable Fly',
-          'Cable Curl',
-          'Hammer Curl',
+          'Triceps Pressdown',
+          'Cable Lateral Raise',
           'Face Pull',
+          'Serratus Wall Slides',
           'Wall Push-Up Plus',
         ],
+        targets: {
+          'Incline Chest Press Machine': { sets: 3, reps: '8–12' },
+          'Flat Chest Press Machine': { sets: 3, reps: '8–12' },
+          'Cable Fly': { sets: 2, reps: '12–15' },
+          'Triceps Pressdown': { sets: 3, reps: '10–12' },
+          'Cable Lateral Raise': { sets: 2, reps: '12–15' },
+          'Face Pull': { sets: 2, reps: '15' },
+          'Serratus Wall Slides': { sets: 2, reps: '10', bodyweight: true },
+          'Wall Push-Up Plus': { sets: 2, reps: '12', bodyweight: true },
+        },
         cardio: 'Optional easy walk – 10 min',
-        mobility: 'Pec stretch, thoracic extension',
+        mobility: 'Gentle pec stretch, lat stretch, thoracic extension',
         restDay: false,
       }
 
     case 2:
       return {
         dayName: 'Tuesday',
-        focus: 'Back / Rear Delts / Core',
+        focus: 'Back / Biceps / Posture',
         estimatedMinutes: '60 min planned',
         warmup: '5 min easy walk + band pull-aparts (2×15)',
         exercises: [
@@ -87,34 +109,44 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
           'Seated Row Machine',
           'Single-Arm Cable Row',
           'Straight Arm Pulldown',
-          'Rear Delt Machine',
+          'Cable Curl',
+          'Hammer Curl',
           'Face Pull',
-          'Weighted Cable Crunch',
           'Cable Pallof Press',
         ],
+        targets: {
+          'Vertical Traction Machine': { sets: 3, reps: '8–12' },
+          'Seated Row Machine': { sets: 3, reps: '8–12' },
+          'Single-Arm Cable Row': { sets: 2, reps: '10–12/side' },
+          'Straight Arm Pulldown': { sets: 2, reps: '10–12' },
+          'Cable Curl': { sets: 3, reps: '10–12' },
+          'Hammer Curl': { sets: 2, reps: '10–12' },
+          'Face Pull': { sets: 2, reps: '15' },
+          'Cable Pallof Press': { sets: 2, reps: '10/side' },
+        },
         cardio: 'Optional easy walk – 10 min',
-        mobility: 'Lat stretch, thread-the-needle, thoracic extension',
+        mobility: 'Thoracic extension, gentle lat and pec stretches',
         restDay: false,
       }
 
     case 3:
       return {
         dayName: 'Wednesday',
-        focus: 'Easy Run (Outdoor)',
-        estimatedMinutes: '40 min run + 5–10 min mobility',
-        warmup: '5 min brisk walk',
+        focus: 'Aerobic Run (Outdoor)',
+        estimatedMinutes: '43 min run + 5–10 min mobility',
+        warmup: '8 min brisk walk',
         exercises: [],
         cardio: 'Easy run/walk intervals – outdoors',
         kind: 'run',
         run: {
-          totalMinutes: 40,
-          warmupWalkMinutes: 5,
-          rounds: 4,
-          jogMinutes: 7,
+          totalMinutes: 43,
+          warmupWalkMinutes: 8,
+          rounds: 3,
+          jogMinutes: 9,
           walkMinutes: 1,
           cooldownWalkMinutes: 5,
           guidance:
-            'Easy conversational pace. No pace goal. Keep it easier than a hard effort — this run supports the lifting week, it does not compete with it.',
+            'Easy conversational pace, not race pace. If recovery is poor, walk the whole session instead.',
         },
         mobility: 'Hip-flexor stretch, figure-4, calf stretch, cat-cow',
         restDay: false,
@@ -123,18 +155,31 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
     case 4:
       return {
         dayName: 'Thursday',
-        focus: 'Triceps / Shoulders (Corrective) / Core',
+        focus: 'Upper Body / Athletic Taper',
         estimatedMinutes: '60 min planned',
         warmup: '5 min easy walk + upper mobility + band pull-aparts',
         exercises: [
-          'Triceps Pressdown',
-          'Overhead Triceps Extension',
+          'Incline Chest Press Machine',
+          'Flat Chest Press Machine',
+          'Vertical Traction Machine',
+          'Chest Supported Row',
           'Cable Lateral Raise',
-          'Shoulder Press Machine',
-          'I-Y-T Raises',
+          'Triceps Pressdown',
+          'Supported Y Raise',
           'Serratus Wall Slides',
-          "Captain's Chair Leg Raise",
+          'Wall Push-Up Plus',
         ],
+        targets: {
+          'Incline Chest Press Machine': { sets: 3, reps: '10–12' },
+          'Flat Chest Press Machine': { sets: 2, reps: '10–12' },
+          'Vertical Traction Machine': { sets: 3, reps: '10–12' },
+          'Chest Supported Row': { sets: 2, reps: '10–12' },
+          'Cable Lateral Raise': { sets: 2, reps: '12–15' },
+          'Triceps Pressdown': { sets: 2, reps: '12–15' },
+          'Supported Y Raise': { sets: 2, reps: '8–10' },
+          'Serratus Wall Slides': { sets: 2, reps: '10', bodyweight: true },
+          'Wall Push-Up Plus': { sets: 2, reps: '12', bodyweight: true },
+        },
         cardio: 'Optional easy walk – 10 min',
         mobility: 'Pec stretch, lat stretch, thoracic extension',
         restDay: false,
@@ -143,44 +188,50 @@ export function getWorkoutForDay(day: number): WorkoutDefinition {
     case 5:
       return {
         dayName: 'Friday',
-        focus: 'Legs / Arms / Conditioning',
-        estimatedMinutes: '60 min planned',
-        warmup: '5 min easy walk + lower body mobility',
+        focus: 'Glutes / Core / Mobility',
+        estimatedMinutes: '45 min planned',
+        warmup: '5–10 min easy bike or treadmill',
         exercises: [
-          'Hack Squat',
+          'Hip Thrust Machine',
           'Seated Hamstring Curl',
-          'Leg Extension',
-          'Adductor Machine',
-          'Abductor Machine',
-          'Cable Curl',
-          'Ab Machine',
-          'Weighted Cable Crunch',
+          'Cable Glute Kickback',
+          'Cable Pallof Press',
+          'Dead-Bug',
+          'Bird Dog',
         ],
-        cardio: 'Optional easy walk – 10 min',
-        mobility: 'Hip-flexor stretch, figure-4, hamstring stretch',
+        targets: {
+          'Hip Thrust Machine': { sets: 2, reps: '12–15' },
+          'Seated Hamstring Curl': { sets: 2, reps: '10–12' },
+          'Cable Glute Kickback': { sets: 2, reps: '10–12/side' },
+          'Cable Pallof Press': { sets: 3, reps: '10/side' },
+          'Dead-Bug': { sets: 3, reps: '8/side', bodyweight: true },
+          'Bird Dog': { sets: 2, reps: '8/side', bodyweight: true },
+        },
+        cardio: 'None planned – keep today light for Saturday’s run',
+        mobility: 'Cat-cow, thread-the-needle, 90/90 hips, adductor rock-backs, hip-flexor, figure-4, gentle calf stretch, thoracic extension',
         restDay: false,
       }
 
     case 6:
       return {
         dayName: 'Saturday',
-        focus: 'Easy Run (Outdoor)',
-        estimatedMinutes: '45–50 min run + 5–10 min mobility',
-        warmup: '5 min brisk walk',
+        focus: 'Endurance Run (Outdoor)',
+        estimatedMinutes: '53 min run + 5–10 min mobility',
+        warmup: '8 min brisk walk',
         exercises: [],
         cardio: 'Easy run/walk intervals – outdoors',
         kind: 'run',
         run: {
-          totalMinutes: 48,
-          warmupWalkMinutes: 5,
-          rounds: 5,
-          jogMinutes: 7,
+          totalMinutes: 53,
+          warmupWalkMinutes: 8,
+          rounds: 4,
+          jogMinutes: 9,
           walkMinutes: 1,
-          cooldownWalkMinutes: 3,
+          cooldownWalkMinutes: 5,
           guidance:
-            'Easy and relaxed, no pace goal. Friday legs plus Sunday legs bracket this day, so keep effort low.',
+            'Relaxed endurance effort. Do not add speed and time together. If recovery is poor, walk the whole session instead.',
         },
-        mobility: 'Hip-flexor stretch, figure-4, calf stretch, pec stretch',
+        mobility: 'Hip-flexor stretch, figure-4, calf stretch, cat-cow',
         restDay: false,
       }
 
@@ -208,12 +259,27 @@ export function getWeekPlan() {
   }))
 }
 
-export function getTargetForExercise(exerciseName: string): ExerciseTarget {
+export function getTargetForExercise(
+  exerciseName: string,
+  workout?: WorkoutDefinition
+): ExerciseTarget {
+  return workout?.targets?.[exerciseName] ?? getDefaultTarget(exerciseName)
+}
+
+function getDefaultTarget(exerciseName: string): ExerciseTarget {
   const name = exerciseName.toLowerCase()
 
   // exact match for unilateral cue
   if (name === 'dead-bug') {
-    return { sets: 3, reps: '8/side' }
+    return { sets: 3, reps: '8/side', bodyweight: true }
+  }
+
+  if (name === 'bird dog') {
+    return { sets: 2, reps: '8/side', bodyweight: true }
+  }
+
+  if (name.includes('supported y raise')) {
+    return { sets: 2, reps: '8–10' }
   }
 
   if (name.includes('wall push-up plus')) {
@@ -244,7 +310,7 @@ export function getTargetForExercise(exerciseName: string): ExerciseTarget {
     return { sets: 2, reps: '10' }
   }
 
-  if (name.includes('cable fly')) {
+  if (name.includes('cable fly') || name.includes('pec deck')) {
     return { sets: 3, reps: '12–15' }
   }
 
@@ -311,6 +377,18 @@ export function getExerciseCue(exerciseName: string): string | null {
     return '3-sec eccentric'
   }
 
+  if (name.includes('supported y raise')) {
+    return 'only if pain-free; light, chest supported'
+  }
+
+  if (name === 'bird dog') {
+    return 'slow, hips level, longer holds'
+  }
+
+  if (name.includes('straight arm pulldown')) {
+    return 'only if shoulder tolerates it'
+  }
+
   if (name.includes('incline chest press machine')) {
     return 'light load right side if needed'
   }
@@ -320,7 +398,7 @@ export function getExerciseCue(exerciseName: string): string | null {
   }
 
   if (name.includes('cable lateral raise')) {
-    return 'strict form, right side conservative'
+    return 'only if tolerated; strict form, right side conservative'
   }
 
   if (name.includes('face pull')) {
@@ -368,7 +446,7 @@ export function getExerciseCue(exerciseName: string): string | null {
   }
 
   if (name.includes('cable fly')) {
-    return 'light, arms slightly forward — stay in a comfortable range'
+    return 'only if pain-free and PT-approved; light, comfortable range'
   }
 
   if (name.includes('pallof')) {
@@ -402,7 +480,23 @@ export function getExerciseCue(exerciseName: string): string | null {
   return null
 }
 
+/** Never offered: these have caused shoulder pain. History and aliases are kept. */
+export const EXCLUDED_EXERCISES = ['Rear Delt Machine', 'Reverse Pec Deck']
+
+/** Not in the default program; offered as substitutions only with PT clearance. */
+export const PT_CLEARANCE_EXERCISES = [
+  'Shoulder Press Machine',
+  'Overhead Triceps Extension',
+  'Overhead Rope Extension',
+]
+
 export function getExerciseSubstitutions(exerciseName: string): string[] {
+  return getAllSubstitutions(exerciseName).filter(
+    (option) => !EXCLUDED_EXERCISES.includes(option)
+  )
+}
+
+function getAllSubstitutions(exerciseName: string): string[] {
   const name = exerciseName.toLowerCase()
 
   if (name.includes('incline chest press machine')) {
@@ -413,8 +507,20 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
     return ['Incline Chest Press Machine', 'Cable Chest Press', 'Pec Deck Fly']
   }
 
+  if (name.includes('chest supported row')) {
+    return ['Seated Row Machine', 'Hammer Iso Row', 'Cable Row']
+  }
+
+  if (name.includes('supported y raise')) {
+    return ['Face Pull', 'Serratus Wall Slides', 'Band Pull-Aparts']
+  }
+
+  if (name === 'bird dog') {
+    return ['Dead-Bug', 'Cable Pallof Press', 'Plank']
+  }
+
   if (name.includes('cable lateral raise')) {
-    return ['Lateral Raise Machine', 'Rear Delt Machine', 'Face Pull']
+    return ['Lateral Raise Machine', 'Face Pull', 'Shoulder Press Machine']
   }
 
   if (name.includes('rear delt machine')) {
@@ -426,7 +532,7 @@ export function getExerciseSubstitutions(exerciseName: string): string[] {
   }
 
   if (name.includes('triceps pressdown')) {
-    return ['Overhead Rope Extension', 'Assisted Dip', 'Cable Chest Press']
+    return ['Overhead Triceps Extension', 'Overhead Rope Extension', 'Assisted Dip', 'Cable Chest Press']
   }
 
   if (name.includes('vertical traction machine')) {
@@ -602,6 +708,8 @@ export function getExerciseHistoryAliases(exerciseName: string): string[] {
     'Lateral Raise Machine': ['Lateral Raise Machine'],
     'Rear Delt Machine': ['Rear Delt Machine', 'Reverse Pec Deck'],
     'Shoulder Press Machine': ['Shoulder Press Machine'],
+    'Supported Y Raise': ['Supported Y Raise'],
+    'Bird Dog': ['Bird Dog', 'Bird-Dogs'],
     'I-Y-T Raises': ['I-Y-T Raises', 'IYT Raises', 'Prone I-Y-T'],
     'Serratus Wall Slides': ['Serratus Wall Slides', 'Wall Slides'],
     'Wall Push-Up Plus': ['Wall Push-Up Plus', 'Push-Up Plus'],

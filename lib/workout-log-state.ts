@@ -8,6 +8,7 @@ export type WorkoutExerciseEntry = {
   substitutedFrom?: string | null
   sets: WorkoutSetInput[]
   difficulty: string
+  effort?: string
   discomfortLocation: string
   discomfortSeverity: string
   note: string
