@@ -1,3 +1,5 @@
+import { currentCoachingOverrides } from './weekly-plan-engine'
+import type { ExerciseSettings } from './exercise-settings'
 import { requireUserId, supabase } from './supabase'
 import type { CoachingOverrides } from './weekly-plan-engine'
 export type { CoachingOverrides } from './weekly-plan-engine'
@@ -62,6 +64,8 @@ export type ExerciseLogRow = {
   calibration_feedback?: string | null
   notes?: string | null
   created_at?: string
+  /** Not a column: merged in from the workout's workout_json by the history loader. */
+  effort?: string | null
 }
 
 export type EquipmentPreferences = {
@@ -104,19 +108,19 @@ export function getLocalDateString(date = new Date()) {
 export function getWorkoutLabelForDay(day: number) {
   switch (day) {
     case 0:
-      return 'Sunday: Legs / Glutes / Core'
+      return 'Sunday: Lower Body / Glutes / Core'
     case 1:
-      return 'Monday: Chest / Shoulders / Biceps'
+      return 'Monday: Chest / Triceps / Shoulders'
     case 2:
-      return 'Tuesday: Back / Rear Delts / Core'
+      return 'Tuesday: Back / Biceps / Posture'
     case 3:
-      return 'Wednesday: Easy Run'
+      return 'Wednesday: Aerobic Run'
     case 4:
-      return 'Thursday: Triceps / Shoulders / Core'
+      return 'Thursday: Upper Body / Athletic Taper'
     case 5:
-      return 'Friday: Legs / Arms / Conditioning'
+      return 'Friday: Glutes / Core / Mobility'
     case 6:
-      return 'Saturday: Easy Run'
+      return 'Saturday: Endurance Run'
     default:
       return 'Next workout'
   }
@@ -715,7 +719,34 @@ export async function loadExerciseLogHistoryFromSupabase(
     return []
   }
 
-  return (data ?? []) as ExerciseLogRow[]
+  const logs = (data ?? []) as ExerciseLogRow[]
+  const workoutIds = [...new Set(logs.map((log) => log.workout_id))]
+  if (!workoutIds.length) return logs
+
+  const { data: workouts, error: workoutsError } = await supabase
+    .from('workouts')
+    .select('id, workout_json')
+    .eq('user_id', userId)
+    .in('id', workoutIds)
+
+  if (workoutsError) {
+    // Without effort the engine simply holds weights, which is the safe outcome.
+    console.error('Exercise effort load error:', workoutsError)
+    return logs
+  }
+
+  const effortByWorkout = new Map(
+    (workouts ?? []).map((workout) => [
+      workout.id as string,
+      (workout.workout_json as { effort_by_exercise?: Record<string, string> } | null)
+        ?.effort_by_exercise,
+    ])
+  )
+
+  return logs.map((log) => ({
+    ...log,
+    effort: effortByWorkout.get(log.workout_id)?.[log.exercise_name] ?? null,
+  }))
 }
 
 export async function loadEquipmentPreferences(): Promise<EquipmentPreferences | null> {
@@ -866,5 +897,58 @@ export async function loadCoachingOverrides(): Promise<CoachingOverrides | null>
     return null
   }
 
-  return (data?.coaching_overrides as CoachingOverrides | null) ?? null
+  return currentCoachingOverrides(data?.coaching_overrides as CoachingOverrides | null)
+}
+
+export async function loadExerciseSettings(): Promise<ExerciseSettings> {
+  const userId = await requireUserId()
+
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('exercise_settings')
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error loading exercise settings', error)
+    return {}
+  }
+
+  return (data?.exercise_settings as ExerciseSettings | null) ?? {}
+}
+
+export async function saveExerciseSettings(settings: ExerciseSettings): Promise<void> {
+  const userId = await requireUserId()
+
+  const { error } = await supabase
+    .from('user_preferences')
+    .upsert([{ user_id: userId, exercise_settings: settings }], { onConflict: 'user_id' })
+
+  if (error) {
+    console.error('Error saving exercise settings', error)
+    throw error
+  }
+}
+
+/** Every discomfort entry for these exercises, so a pain block can't age out of recent history. */
+export async function loadPainLogsFromSupabase(exerciseNames: string[]): Promise<ExerciseLogRow[]> {
+  if (!exerciseNames.length) return []
+
+  const userId = await requireUserId()
+
+  const { data, error } = await supabase
+    .from('exercise_logs')
+    .select('*')
+    .eq('user_id', userId)
+    .in('exercise_name', [...new Set(exerciseNames)])
+    .not('discomfort', 'is', null)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Pain log load error:', error)
+    return []
+  }
+
+  return (data ?? []) as ExerciseLogRow[]
 }

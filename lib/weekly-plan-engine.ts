@@ -14,19 +14,24 @@ export type CoachingOverrides = {
   decisions: CoachingDecision[]
 }
 
-const CORE_EXERCISES = [
-  'Dead-Bug',
-  'Ab Wheel or Dead-Bug',
-  'Weighted Cable Crunch',
-  'Ab Machine',
-  "Captain's Chair Leg Raise",
-]
+const CORE_EXERCISES = ['Dead-Bug', 'Cable Pallof Press', 'Bird Dog']
 
 const LEG_COMPOUND_EXERCISES = [
   'Seated Hamstring Curl',
   'Leg Press (45° Plate Loaded)',
-  'Hack Squat',
+  'Hip Thrust Machine',
 ]
+
+/** Plans saved before this date were built for the previous program. */
+const PROGRAM_START = '2026-11-29'
+
+/** Drops a saved plan that no longer applies. The stored value is left untouched. */
+export function currentCoachingOverrides(
+  overrides: CoachingOverrides | null | undefined
+): CoachingOverrides | null {
+  if (!overrides?.generated_at || overrides.generated_at < PROGRAM_START) return null
+  return overrides
+}
 
 export function buildCoachingOverrides(
   findings: CoachingFinding[]

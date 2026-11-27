@@ -23,6 +23,7 @@ import {
   getWeeklySettings,
   loadCompletedSessionsFromSupabase,
   loadEquipmentPreferences,
+  loadExerciseSettings,
   loadTodayWorkoutRecordFromSupabase,
   saveWeeklyRecoverySettings,
   saveWorkoutOutcomeToSupabase,
@@ -31,6 +32,7 @@ import {
   type WorkoutRow,
 } from '@/lib/storage-supabase'
 import { loadWorkoutProgress } from '@/lib/workout-log-state'
+import { applyExerciseSettings, type ExerciseSettings } from '@/lib/exercise-settings'
 
 type OptionValue = string | null
 type OutcomeMode = 'alternative' | 'missed' | null
@@ -103,37 +105,37 @@ function getDayEmphasis(dayName: string) {
     case 'Sunday':
       return {
         title: "Today's emphasis",
-        body: 'Hamstring and glute bias directly addresses anterior pelvic tilt. Posterior chain strength pulls your pelvis into neutral over time. Own the eccentric on leg press.',
+        body: 'Primary lower-body day. Own the eccentric on leg press, bias hamstrings and glutes, and keep leg extensions only if the knee is happy.',
       }
     case 'Monday':
       return {
         title: "Today's emphasis",
-        body: 'Pressing is coming back after surgery: start light, stay pain-free, and let load follow clean reps. Face pulls and wall push-up plus are the priority, not the finisher.',
+        body: 'Primary chest day. Press with control and stay pain-free. Fly and lateral raise are conditional — skip them if the shoulder objects.',
       }
     case 'Tuesday':
       return {
         title: "Today's emphasis",
-        body: 'Pulling emphasis builds the upper back strength that corrects rounded shoulders. Scapula squeeze on every row, high reps on rear delts and face pulls.',
+        body: 'Primary back and lat day. Squeeze the shoulder blades on every row and keep core work anti-rotation and controlled.',
       }
     case 'Wednesday':
       return {
         title: "Today's emphasis",
-        body: 'Easy run before work. Conversational pace, no pace goal, then a short mobility block.',
+        body: 'Aerobic run at a conversational pace. This is not race pace.',
       }
     case 'Thursday':
       return {
         title: "Today's emphasis",
-        body: 'Corrective shoulder day. Lateral raises stay strict, I-Y-T raises stay very light, and the shoulder press is a gentle reintroduction — stop short of any pinch.',
+        body: 'Second chest and back day for the athletic taper. Quality reps; Y raises stay light and pain-free.',
       }
     case 'Friday':
       return {
         title: "Today's emphasis",
-        body: 'Lower body second hit of the week with arm volume added. Friday governor still applies based on energy and recovery.',
+        body: 'Light athletic support: stability, glutes and mobility. Finish fresh for Saturday.',
       }
     case 'Saturday':
       return {
         title: "Today's emphasis",
-        body: 'Easy outdoor run. Keep it relaxed — Sunday is a leg day.',
+        body: 'Endurance run. Relaxed effort, walk instead if recovery is poor.',
       }
     default:
       return null
@@ -227,6 +229,7 @@ export default function WorkoutPage() {
   const [completedToday, setCompletedToday] = useState<CompletedSessionRow | null>(null)
   const [todayWorkoutRecord, setTodayWorkoutRecord] = useState<WorkoutRow | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [exerciseSettings, setExerciseSettings] = useState<ExerciseSettings>({})
   const [saving, setSaving] = useState(false)
 
   const [showOutcomeForm, setShowOutcomeForm] = useState(false)
@@ -245,6 +248,8 @@ export default function WorkoutPage() {
       try {
         const date = getLocalDateString()
         const weekStart = getWeekStartDate()
+
+        loadExerciseSettings().then(setExerciseSettings).catch(console.error)
 
         const [weekly, sessions, prefs, todayRecord] = await Promise.all([
           getWeeklySettings(weekStart),
@@ -462,10 +467,13 @@ export default function WorkoutPage() {
 
   const effectiveWorkout = useMemo(() => {
     if (isFriday && fridayOutput) {
-      return getFridayWorkoutFromOutput(fridayOutput, cardioPreference)
+      return applyExerciseSettings(
+        getFridayWorkoutFromOutput(fridayOutput, cardioPreference),
+        exerciseSettings
+      )
     }
-    return baseWorkout
-  }, [baseWorkout, isFriday, fridayOutput, cardioPreference])
+    return applyExerciseSettings(baseWorkout, exerciseSettings)
+  }, [baseWorkout, isFriday, fridayOutput, cardioPreference, exerciseSettings])
 
   const guidedHomeFlow = useMemo(() => getHomeAntiOfficeExercises(), [])
   const guidedGymFlow = useMemo(() => getGymAntiOfficeExercises(), [])
@@ -815,7 +823,7 @@ export default function WorkoutPage() {
         <div className="label">Today&apos;s exercises</div>
         <div className="space-y-3">
           {effectiveWorkout.exercises.map((exercise) => {
-            const target = getTargetForExercise(exercise)
+            const target = getTargetForExercise(exercise, effectiveWorkout)
             const tags = getExerciseCoachingTags(effectiveWorkout.dayName, exercise)
 
             return (
@@ -928,8 +936,9 @@ export default function WorkoutPage() {
           <section className="card space-y-4">
             <div className="label">Progression rule</div>
             <p className="text-sm leading-6 text-slate-300">
-              Progression should stay form-first. Clean reps earn normal progression. Slight
-              breakdown should hold the load. Clear breakdown should reduce the load next time.
+              Weight goes up only when every working set reaches the top of its range with
+              clean form, Easy or Moderate effort and no discomfort. Otherwise it holds, and
+              breakdown reduces it. Corrective exercises progress only when you choose.
             </p>
           </section>
         </>

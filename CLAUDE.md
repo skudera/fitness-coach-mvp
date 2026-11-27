@@ -139,7 +139,7 @@ JSONB storing the active coaching plan. Shape:
   ]
 }
 ```
-Applied by the user via the Coaching Plan card on the Home page. Persists until the user taps Apply/Update again.
+Applied by the user via the Coaching Plan card on the Home page. Persists until the user taps Apply/Update again. Plans generated before `PROGRAM_START` (`lib/weekly-plan-engine.ts`) are ignored on load.
 
 ## Key Architectural Patterns
 
@@ -152,17 +152,16 @@ Email + password via Supabase Auth. Session persists with `autoRefreshToken: tru
 In-progress session state is kept in `localStorage` via `lib/workout-log-state.ts` so a refresh doesn't lose work. Cleared after successful save.
 
 ### Progression Engine (`lib/progression-engine.ts`)
-`getMachineAwareSuggestion()` takes `{ exerciseName, targetRepRange, topWeight, topReps, lastDifficulty }` and returns `{ workingWeight, setWeights[], note, incrementText }`.
+`getMachineAwareSuggestion()` is double progression over **all working sets** of the last session (`lastSets`, `setCount`, form, effort, pain) and returns `{ workingWeight, setWeights[], note, incrementText }`.
 
-Form quality drives load decisions:
-- `Clean` + reps hit top of range → increase weight
-- `Clean` + reps below top → hold
-- `Slight Breakdown` → hold
-- `Breakdown` → reduce
-
-Machine-aware step sizes: cable stack (7.5 lb start, 5 lb ladder), lateral raises (custom ladder), major machines (fixed jumps), free movements (5–20 lb flexible).
-
-Set weights are **pre-filled** in the workout log UI when history exists. The user can override before saving.
+- Increase only when every set hit the top of the range with `Clean` form, `Easy` or `Moderate` effort, and no discomfort. Missing form or effort holds.
+- Jumps of 10% or more go on the final set first, then one more set per successful session.
+- `Mild` discomfort holds. `Moderate` recommends no weight (substitute). `Severe`, sharp, radiating or worsening pain blocks that exercise until marked reviewed. `Breakdown` steps down.
+- Corrective exercises (`isCorrectiveExercise`) never auto-increase.
+- `BASELINE_WEEK_END` (2026-12-06): no increases through the first week back.
+- `PROGRESSION_FRESH_START` resets weights only. Pain state (`getPainState` in the logger) uses all history; clearing needs an explicit PT/provider confirmation.
+- Machine-aware step sizes: cable half-step ladder, lateral raise ladder, fixed stack jumps, 2 lb for Supported Y Raise.
+- Effort is not a column: it is saved as `workouts.workout_json.effort_by_exercise` and merged into log rows by `loadExerciseLogHistoryFromSupabase`.
 
 ### Recovery Governor (`lib/recovery-governor.ts`)
 Friday workout is adjusted based on basketball inputs collected in `weekly_settings`. `getFridayOutputType()` returns a `FridayOutputType` which drives `getFridayWorkoutFromOutput()`. Basketball timing, load detection, sleep quality, and pain flags all factor in.
@@ -221,9 +220,13 @@ InBody data is **intentionally separate** from `body_metrics` — clinic machine
 
 ## Weekly Schedule (post-surgery return plan)
 
-Templates in `lib/workout-data.ts` are keyed by `getDay()` (0 = Sunday): Sun Legs/Glutes/Core, Mon Chest/Shoulders/Biceps, Tue Back/Rear Delts/Core, **Wed easy run**, Thu Triceps/Shoulders (corrective)/Core, Fri Legs/Arms, **Sat easy run**. Lifting sessions target ~60 min with a `mobility` finish block. Run days set `kind: 'run'` and a `run` plan (`RunPlan`); they route to `/workout/run` instead of `/workout/log`.
+Program goal: defined athletic physique first, lean athletic second (not maximum size). Templates in `lib/workout-data.ts` are keyed by `getDay()` (0 = Sunday): Sun Lower/Glutes/Core, Mon Chest/Triceps/Shoulders, Tue Back/Biceps/Posture, **Wed aerobic run**, Thu Upper Body (second chest/back day), Fri Glutes/Core/Mobility (light), **Sat endurance run**. Run days set `kind: 'run'` and a `run` plan (`RunPlan`, currently 9/1 intervals); they route to `/workout/run`.
 
-- Exercise targets can be `bodyweight: true` (no weight input in the logger) and set counts come from `getTargetForExercise`, not a fixed 3.
+- Per-day set/rep targets live in `WorkoutDefinition.targets`; call `getTargetForExercise(name, workout)`. `bodyweight: true` hides the weight input.
+- `EXCLUDED_EXERCISES` (rear-delt machine, reverse pec deck) are never offered. `PT_CLEARANCE_EXERCISES` (shoulder press, overhead triceps extensions) are substitution-only and labelled.
+- `lib/exercise-settings.ts`: avoid/replace choices and `painReviewedAt`, stored in `user_preferences.exercise_settings` (see `supabase/migrations/`). Edited on `/preferences` and from the logger.
+- Backlog, in priority order: `BACKLOG.md`.
+
 - `PROGRESSION_FRESH_START` (`lib/progression-engine.ts`) — logs created before this date are ignored for weight suggestions. Pre-surgery history overstates strength. Move or remove it once progression has rebuilt.
 - Home streak no longer forgives weekends (Sat/Sun are scheduled); only governor rest days bridge gaps.
 - The Friday governor's `regular` output reuses `getWorkoutForDay(5)`. Basketball is paused for now.

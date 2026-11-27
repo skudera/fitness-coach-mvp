@@ -32,6 +32,7 @@ import {
   getWeekStartDate,
   getWeeklySettings,
   loadEquipmentPreferences,
+  loadExerciseSettings,
   loadInBodyAssessmentsFromSupabase,
   loadCoachingOverrides,
   saveWeeklyDayOrder,
@@ -41,23 +42,24 @@ import {
   type CoachingOverrides,
 } from '@/lib/storage-supabase'
 import { getInBodyDayNotes } from '@/lib/coaching-engine'
+import { applyExerciseSettings, type ExerciseSettings } from '@/lib/exercise-settings'
 
 function getDayEmphasis(dayName: string) {
   switch (dayName) {
     case 'Sunday':
-      return 'Leg day should bias hamstrings, glutes, and trunk tension so the session supports posture and pelvic position, not just quad fatigue.'
+      return 'Primary lower-body day. Own the eccentric on leg press, bias hamstrings and glutes, and keep leg extensions only if the knee is happy.'
     case 'Monday':
-      return 'Chest work stays controlled with a slow lowering phase. Pressing is being reintroduced after shoulder surgery — start light and progress only when every rep is pain-free. Wall push-up plus keeps the serratus working.'
+      return 'Primary chest day. Press with control and stay pain-free. Fly and lateral raise are conditional — skip them if the shoulder objects.'
     case 'Tuesday':
-      return 'Back work stays controlled and core work should be treated as high-tension work, not just filler at the end.'
+      return 'Primary back and lat day. Squeeze the shoulder blades on every row and keep core work anti-rotation and controlled.'
     case 'Wednesday':
-      return 'Easy run before work. Conversational pace, no pace goal, then a short mobility block.'
+      return 'Aerobic run at a conversational pace. This is not race pace.'
     case 'Thursday':
-      return 'Corrective shoulder day. Keep lateral raises strict, keep I-Y-T raises very light, and treat the shoulder press as a gentle reintroduction.'
+      return 'Second chest and back day for the athletic taper. Quality reps; Y raises stay light and pain-free.'
     case 'Friday':
-      return 'Second leg day of the week with arm volume added. The Friday governor can still lighten it based on recovery inputs.'
+      return 'Light athletic support: stability, glutes and mobility. Finish fresh for Saturday.'
     case 'Saturday':
-      return 'Easy outdoor run. Keep it relaxed — Sunday is a leg day.'
+      return 'Endurance run. Relaxed effort, walk instead if recovery is poor.'
     default:
       return null
   }
@@ -173,6 +175,7 @@ export default function PlanPage() {
     return new Date().getDay()
   })
   const [weeklySettings, setWeeklySettings] = useState<WeeklySettingsRow | null>(null)
+  const [exerciseSettings, setExerciseSettings] = useState<ExerciseSettings>({})
   const [cardioPreference, setCardioPreference] = useState<string | null>(null)
   const [slotOrder, setSlotOrder] = useState<number[]>([1, 2, 3, 4, 5])
   const [latestInBody, setLatestInBody] = useState<InBodyRow | null>(null)
@@ -187,6 +190,7 @@ export default function PlanPage() {
     async function loadWeekly() {
       try {
         const weekStart = getWeekStartDate()
+        loadExerciseSettings().then(setExerciseSettings).catch(console.error)
         const [weekly, prefs, inbodyRows, overrides] = await Promise.all([
           getWeeklySettings(weekStart),
           loadEquipmentPreferences(),
@@ -336,10 +340,12 @@ export default function PlanPage() {
                 })
               : null
 
-          const displayWorkout =
+          const displayWorkout = applyExerciseSettings(
             baseWorkout.dayName === 'Friday' && fridayOutput
               ? getFridayWorkoutFromOutput(fridayOutput, cardioPreference)
-              : baseWorkout
+              : baseWorkout,
+            exerciseSettings
+          )
 
           return (
             <div
@@ -463,7 +469,7 @@ export default function PlanPage() {
                     <div className="label mb-2">Exercises</div>
                     <div className="space-y-2">
                       {displayWorkout.exercises.map((exercise) => {
-                        const target = getTargetForExercise(exercise)
+                        const target = getTargetForExercise(exercise, displayWorkout)
                         const tags = getExerciseCoachingTags(displayWorkout.dayName, exercise)
                         return (
                           <div
@@ -570,7 +576,7 @@ export default function PlanPage() {
                     </div>
                   ) : (
                     <p className="text-xs text-slate-600">
-                      Form-first progression: Clean → advance · Slight Breakdown → hold · Breakdown → reduce
+                      Weight goes up only when every set tops the range: clean, Easy or Moderate, no discomfort
                     </p>
                   )}
                 </div>

@@ -5,6 +5,7 @@ import {
   loadEquipmentPreferences,
   saveEquipmentPreferences
 } from '@/lib/storage-supabase'
+import { AvoidedExercises } from '@/components/AvoidedExercises'
 
 export default function EquipmentPreferencesPage() {
 
@@ -202,6 +203,8 @@ export default function EquipmentPreferencesPage() {
             : 'Save Preferences'}
 
       </button>
+
+      <AvoidedExercises />
 
     </div>
 
